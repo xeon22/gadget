@@ -1,19 +1,17 @@
-
-import json
 import pathlib
 from datetime import datetime
-from . import init, utils
+from gadget.tasks import init, utils
 from invoke import task, tasks
 from artifactory import ArtifactoryPath
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin
 from rich.console import Console
 from rich.table import Table
 from jinja2 import Template
 import requests
 import _thread
 import time
+import logging
 
-logger = utils.init_logging()
 console = Console()
 
 
@@ -37,14 +35,14 @@ def get_url(list):
 
     abs_path = path.joinpath(path.as_posix(), *list)
     url = urljoin(base_url, abs_path.as_posix())
-    logger.info(url)
+    logging.info(url)
 
     return url
 
 
 @task
 def artifact_properties(ctx, artifact):
-    logger.info(f"Adding properties to artifact: {artifact}")
+    logging.info(f"Adding properties to artifact: {artifact}")
     art = ArtifactoryPath(ctx.config.main.artifactory, artifact)
 
     import time
@@ -67,7 +65,7 @@ def artifact_properties(ctx, artifact):
         "zones": ["1", "2"],
     }
 
-    logger.info(metadata)
+    logging.info(metadata)
     art.properties = metadata
 
 @task
@@ -77,15 +75,15 @@ def upload(ctx, artifact, repo, repo_path=None, server=None, properties=None):
     if repo_path is None:
         file = pathlib.Path(artifact)
         artifact_path.append(file.name)
-        logger.debug(artifact_path)
-        logger.info(f"Repo path not supplied, defaulting to {get_url(artifact_path)}")
+        logging.debug(artifact_path)
+        logging.info(f"Repo path not supplied, defaulting to {get_url(artifact_path)}")
     else:
-        logger.info(repo_path)
+        logging.info(repo_path)
         artifact_path.append(repo_path)
-        logger.info(f"Uploading artifact to: {get_url(artifact_path)}")
+        logging.info(f"Uploading artifact to: {get_url(artifact_path)}")
 
     upload_url = get_url(artifact_path)
-    logger.info(f"Uploading file with url: {upload_url}")
+    logging.info(f"Uploading file with url: {upload_url}")
     art = ArtifactoryPath(upload_url, ctx.config.main.artifactory)
 
     try:
@@ -95,12 +93,12 @@ def upload(ctx, artifact, repo, repo_path=None, server=None, properties=None):
         # tasks.call
 
     except FileNotFoundError:
-        logger.error(f"No file name {artifact} found")
+        logging.error(f"No file name {artifact} found")
         exit(1)
     except RuntimeError as e:
-        logger.error(f"Upload failed: {e}")
+        logging.error(f"Upload failed: {e}")
     except Exception as e:
-        logger.error(e)
+        logging.error(e)
 
 
 @task(pre=[init.load_conf])
@@ -131,10 +129,10 @@ def artifact_cleanup(ctx, repo, date, delete=False, table=False):
     input_datefmt = '%Y-%m-%dT%H:%M:%S.%fZ'
 
     if len(results) < 1:
-        logger.info("No artifacts to process")
+        logging.info("No artifacts to process")
         exit(0)
 
-    logger.debug(results[0])
+    logging.debug(results[0])
 
     for item in results:
         table.add_row(
@@ -197,7 +195,7 @@ def docker_container_cleanup(ctx, repo, date, delete=False, table=False):
     try:
         results = art.aql(art.create_aql_text(aql_query.replace('\n', '').replace(' ', '')))
     except requests.exceptions.HTTPError:
-        logger.error("Invalid AQL query")
+        logging.error("Invalid AQL query")
         exit(1)
 
     table = Table(
@@ -210,11 +208,11 @@ def docker_container_cleanup(ctx, repo, date, delete=False, table=False):
     input_datefmt = '%Y-%m-%dT%H:%M:%S.%fZ'
 
     if len(results) < 1:
-        logger.info("No results to show")
+        logging.info("No results to show")
         exit(0)
 
-    logger.debug(len(results))
-    logger.debug(results[0])
+    logging.debug(len(results))
+    logging.debug(results[0])
 
     for item in results:
         table.add_row(
@@ -228,7 +226,7 @@ def docker_container_cleanup(ctx, repo, date, delete=False, table=False):
     if table:
         console.print(table)
 
-    logger.info(f"{len(results)} to process")
+    logging.info(f"{len(results)} to process")
 
     if delete:
         while len(results) > 0:
@@ -246,6 +244,6 @@ def delete_docker_tag(conf, artifact, thread):
 
     try:
         art.unlink()
-        logger.info(f"{thread}: Deleted tag: {artifact['repo']}:{artifact['path']}")
+        logging.info(f"{thread}: Deleted tag: {artifact['repo']}:{artifact['path']}")
     except FileNotFoundError:
-        logger.info(f"{thread}: File not found: {artifact['repo']}:{artifact['path']}")
+        logging.info(f"{thread}: File not found: {artifact['repo']}:{artifact['path']}")

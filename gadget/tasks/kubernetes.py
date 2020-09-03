@@ -1,12 +1,10 @@
-import json
 from kubernetes import client, config
 from invoke import task
-from . import utils
+from gadget.tasks import init, utils
 from atlassian import Confluence
 from rich.console import Console
 from rich.table import Table
 from jinja2 import Template
-import datetime
 
 logger = utils.init_logging()
 
@@ -36,7 +34,7 @@ zones = {
 }
 
 
-@task()
+@task(pre=[init.load_conf])
 def init(ctx):
     ctx.config.main.confluence.client = Confluence(
         url='https://platformzero.atlassian.net/wiki',
@@ -49,7 +47,8 @@ def init(ctx):
 def get_contexts(ctx):
     logger.info(utils.print_json(config.list_kube_config_contexts()))
 
-@task()
+
+@task(pre=[init])
 def get_pods(ctx, zone):
     config.load_kube_config(context=zones[zone]['cluster'])
     kube = client.CoreV1Api()
@@ -58,7 +57,6 @@ def get_pods(ctx, zone):
     columns = ["PodName", "Created", "ContainerName", "Image", "Status"]
     table = Table(*columns, title="Active Pods")
     pods = []
-
 
     for item in k8s.items:
         client_id, work_stream, service_class = None, None, None
@@ -86,14 +84,14 @@ def get_pods(ctx, zone):
     console.print(table)
 
 
-@task()
-def get_namespaces(ctx, zone, print_table=False):
+@task(pre=[init])
+def audit_namespaces(ctx, zone, table=False, publish=False):
     config.load_kube_config(context=zones[zone]['cluster'])
     kube = client.CoreV1Api()
     ns = kube.list_namespace()
-    columns = ["Name", "Created", "ClientId", "WorkStream", "ServiceClass"]
+    columns = ["Name", "Created", "ClientId", "WorkStream", "ServiceClass", "Pods"]
     namespaces = []
-    table = Table(*columns, title="Active Namespaces")
+    console_table = Table(*columns, title="Active Namespaces")
 
     logger.info(f"Found {len(ns.items)} namespaces to process")
 
@@ -108,10 +106,11 @@ def get_namespaces(ctx, zone, print_table=False):
         row = [
             item.metadata.name,
             item.metadata.creation_timestamp.strftime("%b %d %Y"),
-            client_id, work_stream, service_class
+            client_id, work_stream, service_class,
+            str(len(kube.list_namespaced_pod(item.metadata.name).items))
         ]
 
-        table.add_row(*row)
+        console_table.add_row(*row)
         namespaces.append(row)
 
     content = Template(
@@ -137,11 +136,12 @@ def get_namespaces(ctx, zone, print_table=False):
         """
     )
 
-    if print_table:
-        console.print(table)
+    if table:
+        console.print(console_table)
 
-    ctx.config.main.confluence.client.update_existing_page(
-        zones.get(zone).get("pageid"),
-        zones.get(zone).get("name"),
-        content.render(fields=len(columns), columns=columns, namespaces=namespaces),
-    )
+    if publish:
+        ctx.config.main.confluence.client.update_existing_page(
+            zones.get(zone).get("pageid"),
+            zones.get(zone).get("name"),
+            content.render(fields=len(columns), columns=columns, namespaces=namespaces),
+        )

@@ -1,19 +1,13 @@
-import json
-import logging
-import urllib
-from . import utils
+from gadget.tasks import init, utils
 from urllib import parse
 from datetime import datetime
-from invoke import task, config, call
+from invoke import task
 from atlassian import Bitbucket
-from rich import print
-from rich.logging import RichHandler
 from rich.console import Console
 from rich.table import Table
 import requests
 
 console = Console()
-logger = utils.init_logging()
 
 
 def repo_check(repo):
@@ -142,7 +136,7 @@ def add_branch_checks(ctx, repo):
         # logger.info(permissions)
         # breakpoint()
         permissions = {'branch_match_kind': 'glob', 'pattern': 'master', 'kind': 'delete', 'value': 1}
-        logger.info(permissions)
+        logging.info(permissions)
         data = ctx.config.main.bitbucket.client.post(
             path=f"/2.0/repositories/{workspace}/{_repo}/branch-restrictions",
             # headers={'Content-Type': 'application/json'},
@@ -150,11 +144,11 @@ def add_branch_checks(ctx, repo):
         )
 
         # data = ctx.config.main.bitbucket.client.add_branch_restriction(workspace, _repo, 'delete', branch_match_kind='glob', branch_pattern='master')
-        logger.info(data)
+        logging.info(data)
     except requests.exceptions.HTTPError as e:
-        logger.error(e)
+        logging.error(e)
     except Exception as e:
-        logger.error(e)
+        logging.error(e)
 
 
 @task(pre=[init])

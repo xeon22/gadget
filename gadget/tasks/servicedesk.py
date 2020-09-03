@@ -18,14 +18,6 @@ from rich.table import Table
 # table.add_row("Dec 16, 2016", "Rouge One: A Star Wars Story", "$1,332,439,889")
 
 console = Console()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime).19s] [%(levelname)s] %(message)s',
-    datefmt="[%X]",
-    handlers=[RichHandler(), Console]
-)
-
 logger = logging.getLogger("rich")
 
 @task()

@@ -1,9 +1,9 @@
 import yaml
 import os
 
-from . import utils
+from gadget.tasks import utils
 from pathlib import Path
-from invoke import config, task
+from invoke import task
 
 logger = utils.init_logging()
 

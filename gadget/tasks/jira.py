@@ -6,16 +6,6 @@ from atlassian import Jira
 from rich import print
 from rich.logging import RichHandler
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime).19s] [%(levelname)s] %(message)s',
-    datefmt="[%X]",
-    handlers=[RichHandler()]
-)
-
-log = logging.getLogger("rich")
-
-
 @task()
 def init(ctx):
     ctx.config.main.jira.client = Jira(
@@ -28,9 +18,9 @@ def init(ctx):
 
 @task(pre=[init])
 def get_issues(ctx, project):
-    log.info("Getting issues for project %s", project)
+    logging.info("Getting issues for project %s", project)
     jql = f'project = {project} AND status IN ("Open", "In Progress") ORDER BY issuekey'
     data = ctx.config.main.jira.client.get(path)
-    log.info(data)
+    logging.info(data)
 
 
