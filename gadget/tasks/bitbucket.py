@@ -6,6 +6,7 @@ from atlassian import Bitbucket
 from rich.console import Console
 from rich.table import Table
 import requests
+import logging
 
 console = Console()
 
@@ -35,10 +36,10 @@ def branch_permission(**overrides):
     return defaults
 
 
-@task()
+@task(pre=[init.load_conf])
 def init(ctx):
     ctx.config.main.bitbucket.client = Bitbucket(
-        url='https://api.bitbucket.org',
+        url='https://api.bitbucket.org/2.0',
         username=ctx.config.main.bitbucket.username,
         password=ctx.config.main.bitbucket.password,
         cloud=True,
@@ -61,7 +62,7 @@ def get_repo(ctx, repo):
         console.print(data)
         # ctx.update({'cache': {'repositories': data}})
     except requests.exceptions.HTTPError as e:
-        console.print(e, style="red")
+        logging.error(e)
 
 
 @task(pre=[init])
@@ -97,7 +98,12 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
         "description": description
     }
 
-    output = ctx.config.main.bitbucket.client.put(path=f'/repositories/{workspace}/{_repo}', data=repo_data)
+    try:
+        output = ctx.config.main.bitbucket.client.put(path=f'/repositories/{workspace}/{_repo}', data=repo_data)
+    except requests.exceptions.HTTPError as e:
+        logging.error(e)
+        exit(1)
+
     console.print(output)
 
 

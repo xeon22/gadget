@@ -1,3 +1,5 @@
+import logging
+
 from kubernetes import client, config
 from invoke import task
 from gadget.tasks import init, utils
@@ -6,7 +8,6 @@ from rich.console import Console
 from rich.table import Table
 from jinja2 import Template
 
-logger = utils.init_logging()
 
 console = Console()
 
@@ -45,7 +46,7 @@ def init(ctx):
 
 @task()
 def get_contexts(ctx):
-    logger.info(utils.print_json(config.list_kube_config_contexts()))
+    logging.info(utils.print_json(config.list_kube_config_contexts()))
 
 
 @task(pre=[init])
@@ -93,7 +94,7 @@ def audit_namespaces(ctx, zone, table=False, publish=False):
     namespaces = []
     console_table = Table(*columns, title="Active Namespaces")
 
-    logger.info(f"Found {len(ns.items)} namespaces to process")
+    logging.info(f"Found {len(ns.items)} namespaces to process")
 
     for item in ns.items:
         client_id, work_stream, service_class = None, None, None

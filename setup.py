@@ -29,7 +29,7 @@ setup(
     packages=['gadget', 'gadget/tasks'],
 
     package_data={
-        'gadget': ['version.txt', 'schema/*', 'inventory/*.py'],
+        'gadget': ['version.txt'],
     },
 
     url='https://bitbucket.org/capcosaas/pz-gadget.git',
@@ -54,38 +54,10 @@ setup(
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
 
-    install_requires=[
-        # 'PyYAML ~= 3.12',
-        # 'GitPython ~= 2.1.10',
-        # 'ansible ~= 2.6.0',
-        # 'ansible[azure] ~= 2.6.0',
-        # 'azure ~= 4.0.0',
-        # 'azure-mgmt-dns ~= 2.1.0',
-        # 'azure-mgmt-web ~= 0.40.0',
-        # 'azure-storage ~= 0.36',
-        # 'azure-common ~= 1.1.0',
-        # 'azure-keyvault ~= 1.1.0',
-        # 'azure-mgmt-common ~= 0.20.0',
-        # 'azure-mgmt-compute ~= 4.3.0',
-        # 'azure-mgmt-keyvault ~= 1.1.0',
-        # 'azure-mgmt-network ~= 2.4.0',
-        # 'azure-mgmt-resource ~= 2.0.0',
-        # 'azure-mgmt-storage ~= 2.0.0',
-        # 'azure-storage ~= 0.36.0',
-        # 'azure-storage-blob ~= 1.4.0',
-        # 'cryptography ~= 2.2.2',
-        # 'invoke ~= 1.2.0',
-        # 'jsonschema ~= 2.6.0',
-        # 'msrest ~= 0.5.0',
-        # 'msrestazure ~= 0.5.0',
-        # 'packaging ~= 18.0',
-        # 'pyopenssl ~= 18.0.0',
-        # 'requests ~= 2.19',
-        # 'setuptools-scm ~= 3.1.0'
-    ],
+    install_requires=[],
 
     setup_requires=['setuptools_scm'],
 

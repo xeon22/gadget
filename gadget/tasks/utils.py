@@ -8,15 +8,15 @@ from rich.logging import RichHandler
 def objectify(hash):
     return types.SimpleNamespace(**hash)
 
-def init_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format='[%(module).19s:%(lineno)s] %(message)s',
-        datefmt="[%X]",
-        handlers=[RichHandler()]
-    )
-
-    return logging.getLogger("rich")
+# def init_logging():
+#     logging.basicConfig(
+#         level=logging.INFO,
+#         format='[%(module).19s:%(lineno)s] %(message)s',
+#         datefmt="[%X]",
+#         handlers=[RichHandler()]
+#     )
+#
+#     return logging.getLogger("rich")
 
 @task
 def gen_client_name(ctx):
