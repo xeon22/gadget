@@ -86,6 +86,47 @@ def get_pods(ctx, zone):
 
 
 @task(pre=[init])
+def cleanup_jobs(ctx, zone, include_completed=False, purge=False):
+    config.load_kube_config(context=zones[zone]['cluster'])
+    kube = client.BatchV1Api()
+    k8s = kube.list_job_for_all_namespaces()
+    jobs = k8s.items
+
+    columns = ["JobName", "NameSpace", "StartTime", "EndTime", "Message"]
+    table = Table(*columns, title="Jobs")
+    timeformat = "%b %d %Y %H:%M:%S %Z"
+
+    for item in jobs:
+        data = [
+            item.metadata.name,
+            item.metadata.namespace,
+            item.metadata.creation_timestamp.strftime(timeformat),
+        ]
+
+        if item.status.to_dict().get('failed'):
+            data.append(item.status.conditions[0].type)
+            data.append(item.status.conditions[0].message)
+
+        if item.status.to_dict().get('succeeded'):
+            data.append(item.status.completion_time.strftime(timeformat))
+            data.append(item.status.conditions[0].type)
+
+        table.add_row(*data)
+
+    if purge:
+        for item in jobs:
+            if item.status.to_dict().get('failed'):
+                action = kube.delete_namespaced_job(item.metadata.name, item.metadata.namespace)
+
+            if include_completed and item.status.to_dict().get('successful'):
+                action = kube.delete_namespaced_job(item.metadata.name, item.metadata.namespace)
+
+            logging.info(f"Deleted job {item.metadata.name}: {action}")
+    else:
+        console.print(table)
+
+
+@task(pre=[init])
 def audit_namespaces(ctx, zone, table=False, publish=False):
     config.load_kube_config(context=zones[zone]['cluster'])
     kube = client.CoreV1Api()

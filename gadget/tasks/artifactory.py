@@ -17,10 +17,11 @@ console = Console()
 
 def artifactory(conf, repo, path=None):
     """
-    Parameters:
-        conf<Dict>: Must contain the keys for the artifactory config (server, username, password)
-        repo<String>: The artifactory repository to reference
-        path<String>: The artifact path
+    :param conf: dict, Must contain the keys for the artifactory config (server, username, password)
+    :param repo: string, The artifactory repository to reference
+    :param path: string, The artifact path
+
+    :return ArtifactoryPath: ArtifactoryPath
     """
 
     if path is not None:
@@ -30,6 +31,11 @@ def artifactory(conf, repo, path=None):
 
 
 def get_url(list):
+    """
+    :param list: list, The list of urls
+    :return url: string
+    """
+
     base_url = "https://repo.platformzero.build"
     path = pathlib.PurePath("/artifactory")
 
@@ -67,6 +73,7 @@ def artifact_properties(ctx, artifact):
 
     logging.info(metadata)
     art.properties = metadata
+
 
 @task
 def upload(ctx, artifact, repo, repo_path=None, server=None, properties=None):
@@ -166,7 +173,16 @@ def artifact_cleanup(ctx, repo, date, delete=False, table=False):
 
 
 @task(pre=[init.load_conf])
-def docker_container_cleanup(ctx, repo, date, delete=False, table=False):
+def docker_container_cleanup(ctx, repo, date, pathmatch='*', purge=False, table=False):
+    """
+    Docker cleanup task
+    :param ctx: Context, Invoke context
+    :param repo: string, The artifactory docker repo to target
+    :param date: string, The age of the images to target
+    :param pathmatch: string, Additional path match criteria to check
+    :param purge: bool, Toggle for purging containers
+    :param table: bool, Toggle for printing a table of images found
+    """
     art = artifactory(ctx.config.main.artifactory, repo)
 
     query = Template(
@@ -177,7 +193,8 @@ def docker_container_cleanup(ctx, repo, date, delete=False, table=False):
                 "repo": "{{repo}}",
                 "$and": [
                     {"name": {"$match": "manifest.json"}},
-                    {"updated": {"$before": "{{date}}"}}, 
+                    {"updated": {"$before": "{{date}}"}},
+                    {"path": {"$match": "{{pathmatch}}"}},
                     {
                         "$msp": [
                             {"path": {"$nmatch": "gradle*"}},
@@ -190,9 +207,10 @@ def docker_container_cleanup(ctx, repo, date, delete=False, table=False):
         '''
     )
 
-    aql_query = query.render(date=date, repo=repo)
+    aql_query = query.render(date=date, repo=repo, pathmatch=pathmatch)
 
     try:
+        logging.info(aql_query)
         results = art.aql(art.create_aql_text(aql_query.replace('\n', '').replace(' ', '')))
     except requests.exceptions.HTTPError:
         logging.error("Invalid AQL query")
@@ -218,7 +236,6 @@ def docker_container_cleanup(ctx, repo, date, delete=False, table=False):
         table.add_row(
             f"{item['repo']}:{item['path']}/{item['name']}",
             datetime.strftime(datetime.strptime(item['updated'], input_datefmt), '%b %d %Y'),
-            # datetime.strftime(datetime.strptime(item['stat'][0]['downloaded'], input_datefmt), '%b %d %Y')
         )
 
     table.add_row(f"{len(results)} items")
@@ -228,7 +245,7 @@ def docker_container_cleanup(ctx, repo, date, delete=False, table=False):
 
     logging.info(f"{len(results)} to process")
 
-    if delete:
+    if purge:
         while len(results) > 0:
             for num in range(8):
                 try:
