@@ -3,10 +3,6 @@ from invoke import Program, Argument, Collection
 from gadget import tasks
 from gadget import __version__ as gadget_version
 
-import logging
-
-LOGGING_FORMAT = '[%(module)s:%(funcName)s:%(lineno)d] %(levelname)s: %(message)s'
-
 
 class Gadget(Program):
     def core_args(self):
@@ -28,9 +24,4 @@ program = Gadget(
     binary_names=["gadget"],
     version=gadget_version.__version__,
     namespace=Collection.from_module(tasks)
-)
-
-logging.basicConfig(
-    format=LOGGING_FORMAT,
-    level=logging.INFO
 )

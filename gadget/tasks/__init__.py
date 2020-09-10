@@ -12,7 +12,9 @@ from gadget.tasks import (
     jira,
     kubernetes,
     utils,
-    bitbucket
+    bitbucket,
+    hvault,
+    digicert
 )
 
 ns = Collection()
@@ -25,10 +27,15 @@ ns.add_collection(artifactory)
 ns.add_collection(tls)
 ns.add_collection(kubernetes)
 ns.add_collection(azure)
+ns.add_collection(hvault)
+ns.add_collection(digicert)
+
+LOGGING_FORMAT = '[%(module)s:%(funcName)s:%(lineno)d] %(levelname)s: %(message)s'
+# format='[%(module).19s:%(lineno)s] %(message)s',
 
 logging.basicConfig(
     level=logging.INFO,
-    format='[%(module).19s:%(lineno)s] %(message)s',
+    format=LOGGING_FORMAT,
     datefmt="[%X]",
     handlers=[RichHandler()]
 )

@@ -2,7 +2,6 @@
 import logging
 from invoke import Collection
 from rich.logging import RichHandler
-# import gadget.tasks
 
 from gadget.tasks import (
     init,
@@ -13,7 +12,9 @@ from gadget.tasks import (
     jira,
     kubernetes,
     utils,
-    bitbucket
+    bitbucket,
+    hvault,
+    digicert
 )
 
 
@@ -29,6 +30,8 @@ ns.add_collection(artifactory)
 ns.add_collection(tls)
 ns.add_collection(kubernetes)
 ns.add_collection(azure)
+ns.add_collection(hvault)
+ns.add_collection(digicert)
 
 logging.basicConfig(
     level=logging.INFO,
