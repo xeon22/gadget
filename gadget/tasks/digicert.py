@@ -1,6 +1,9 @@
 
-from gadget.tasks import init, utils
-from invoke import task
+from gadget.tasks import init, utils, confluence
+from invoke import task, Collection, Executor
+from invoke.main import program
+# from fabric.main import program
+
 from rich.console import Console
 from jinja2 import Template
 from rich.table import Table
@@ -54,30 +57,73 @@ def list_orders(ctx):
     orders = api.orders.list(body=None)
 
     console.print(orders.body)
-
-    table = Table(
+    columns = [
         "OrderId",
         "CommonName",
         "ValidFrom",
         "ValidUntil",
-        "DaysLeft",
-        title="Orders",
-    )
+        "DaysLeft"
+    ]
+
+    rows = []
+
+    table = Table(*columns, title="Certificate Catalog")
+    orders_list = orders.body.get('orders')
 
     for item in orders.body.get('orders'):
         if item['status'] == 'rejected':
             continue
 
-        table.add_row(
+        row = [
             str(item['id']),
             item['certificate']['common_name'],
             item['certificate']['valid_from'],
             item['certificate']['valid_till'],
             str(item['certificate']['days_remaining'])
-        )
+        ]
+
+        table.add_row(*row)
+        rows.append(row)
 
     console.print(table)
 
+    template = Template(
+        """
+        <style>
+        tr:nth-child(even) {background-color: #f2f2f2;}
+        </style>
+
+        <table style="width:100%">
+          <tr>
+            {% for col in columns %}
+            <th><b>{{ col }}</b></th>
+            {% endfor %}
+          </tr>
+          {% for item in data %}
+          <tr style="background-color:{{ loop.cycle('#ffffff', '#f2f2f2') }}">
+            {% for num in range(fields) %}
+            <td style="white-space:nowrap">{{ item[num] }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </table>
+        """
+    )
+
+    output = template.render(fields=len(columns), columns=columns, data=sorted(rows, key=lambda k: k[3]))
+    confluence.publish_page(
+        ctx,
+        page_id=ctx.config.main.digicert.confluence_page,
+        title=table.title,
+        content=output
+    )
+
+    # res = Executor(Collection(confluence), config=ctx.config, core=program.core).execute(
+    #     [
+    #         ("publish_page", {"template": template, "page_id": ctx.config.main.digicert.confluence_page, "columns": columns})
+    #     ]
+    # )
+    
 
 @task(pre=[init])
 def order(ctx, id):
