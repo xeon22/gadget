@@ -2,7 +2,7 @@ import logging
 
 from kubernetes import client, config
 from invoke import task
-from gadget.tasks import init, utils
+from gadget.tasks import init, utils, confluence
 from atlassian import Confluence
 from rich.console import Console
 from rich.table import Table
@@ -182,8 +182,9 @@ def audit_namespaces(ctx, zone, table=False, publish=False):
         console.print(console_table)
 
     if publish:
-        ctx.config.main.confluence.client.update_existing_page(
-            zones.get(zone).get("pageid"),
-            zones.get(zone).get("name"),
-            content.render(fields=len(columns), columns=columns, namespaces=namespaces),
+        confluence.publish_page(
+            ctx,
+            page_id=zones.get(zone).get("pageid"),
+            title=zones.get(zone).get("name"),
+            content=content.render(fields=len(columns), columns=columns, namespaces=namespaces),
         )

@@ -26,8 +26,8 @@ def publish_page(ctx, page_id, title, content):
         ctx.config.main.confluence.client.update_existing_page(page_id, title, content)
 
 
-    import os
-    with open(os.path.join(os.getcwd(), 'table.html'), 'w') as f:
-        f.write(content)
+    # import os
+    # with open(os.path.join(os.getcwd(), 'table.html'), 'w') as f:
+    #     f.write(content)
 
 

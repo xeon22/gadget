@@ -123,7 +123,7 @@ def list_orders(ctx):
     #         ("publish_page", {"template": template, "page_id": ctx.config.main.digicert.confluence_page, "columns": columns})
     #     ]
     # )
-    
+
 
 @task(pre=[init])
 def order(ctx, id):
