@@ -21,3 +21,5 @@ azure-graphrbac==0.61.1
 azure-mgmt-compute==13.0.0
 azure-cli-core==2.11.1
 simple-rest-client==1.0.7
+azure-keyvault==4.1.0
+azure-identity==1.4.0

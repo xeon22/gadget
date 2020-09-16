@@ -171,3 +171,17 @@ def download(ctx, id, format="pem_nointermediate", output=None):
     if output:
         with open(output, 'w') as f:
             f.write(cert.decode('utf-8'))
+
+
+@task(pre=[init])
+def renew(ctx):
+    from azure.identity import DefaultAzureCredential
+    from azure.keyvault.secrets import SecretClient
+
+    credential = DefaultAzureCredential()
+
+    secret_client = SecretClient(vault_url="https://my-key-vault.vault.azure.net/", credential=credential)
+    secret = secret_client.get_secret("secret-name")
+
+    print(secret.name)
+    print(secret.value)

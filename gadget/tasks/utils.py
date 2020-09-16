@@ -1,6 +1,7 @@
 import types
-import random, string, logging, sys
+import random, string, logging, os
 import json
+import yaml
 
 from invoke import task, config
 from rich.logging import RichHandler
@@ -27,6 +28,24 @@ def gen_client_name(ctx):
 
     logging.info(id)
 
+
 def print_json(data):
     # jdata = json.loads(data)
     return json.dumps(data, indent=2, sort_keys=True)
+
+
+@task()
+def format_yaml(ctx, input, output=None):
+    fh_in = open(input, 'rb')
+    yaml_input = yaml.load(fh_in.read(), Loader=yaml.FullLoader)
+    fh_in.close()
+
+    if output is None:
+        input_basedir = os.path.basename(input)
+        input_basename = "foo"
+        output = os.path.join(input_basedir, )
+    with open(output, 'w') as fh:
+        print()
+
+
+

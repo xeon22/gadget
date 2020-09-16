@@ -7,14 +7,20 @@ from invoke import task, config, call
 from rich.table import Table
 from rich.console import Console
 
+from gadget.tasks import init
 
 from azure.graphrbac import GraphRbacManagementClient
-# from azure.common.credentials import ServicePrincipalCredentials
-# from azure.graphrbac.models import UserCreateParameters, PasswordProfile
-
 from azure.common.client_factory import get_client_from_cli_profile
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
 
 console = Console()
+
+
+@task(pre=[init.load_conf])
+def init(ctx):
+    print()
 
 
 @task(default=True, optional=['debug'])
@@ -119,3 +125,13 @@ def add_user(ctx):
 
     print(f'curl -X GET -H "Authorization: {token}" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/invitations -d \'{json.dumps(params)}\'')
 
+
+@task()
+def get_secret(ctx, keyvault, secret):
+    credential = DefaultAzureCredential()
+
+    secret_client = SecretClient(vault_url="https://my-key-vault.vault.azure.net/", credential=credential)
+    secret = secret_client.get_secret("secret-name")
+
+    print(secret.name)
+    print(secret.value)
