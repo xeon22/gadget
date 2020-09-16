@@ -109,10 +109,11 @@ def upload(ctx, artifact, repo, repo_path=None, server=None, properties=None):
 
 
 @task(pre=[init.load_conf])
-def artifact_cleanup(ctx, repo, date, delete=False, table=False):
-    art = artifactory(repo, ctx.config.main.artifactory)
+def artifact_cleanup(ctx, repo, date, purge=False, output=False, threads=5):
+    art = artifactory(ctx.config.main.artifactory, repo)
 
-    query = Template('''
+    query = Template(
+        '''
         items.find(
             {
                 "name":{"$match":"*"}, 
@@ -121,7 +122,8 @@ def artifact_cleanup(ctx, repo, date, delete=False, table=False):
                 "repo":"{{repo}}"
             }
         )
-    ''')
+        '''
+    )
 
     aql_query = query.render(date=date, repo=repo)
     results = art.aql(art.create_aql_text(aql_query.replace('\n', '').replace(' ', '')))
@@ -139,7 +141,7 @@ def artifact_cleanup(ctx, repo, date, delete=False, table=False):
         logging.info("No artifacts to process")
         exit(0)
 
-    logging.debug(results[0])
+    logging.info(f"{len(results)} to process")
 
     for item in results:
         table.add_row(
@@ -148,32 +150,36 @@ def artifact_cleanup(ctx, repo, date, delete=False, table=False):
             datetime.strftime(datetime.strptime(item['updated'], input_datefmt), '%b %d %Y')
         )
 
-    if table:
+    if output:
         table.add_row(f"Results: {len(results)}")
         console.print(table)
 
-    if delete:
+    if purge:
         while len(results) > 0:
-            for num in range(8):
+            for num in range(threads):
                 try:
                     artifact = results.pop()
-                    _thread.start_new_thread(delete_docker_tag, (artifact, f"Thread-{num}", ))
+                    artifact_path = f"{artifact['path']}/{artifact['name']}"
+                    _thread.start_new_thread(
+                        delete_artifact,
+                        (ctx.config.main.artifactory, repo, artifact_path, f"Thread-{num}")
+                    )
                 except IndexError:
                     break
             time.sleep(.500)
 
         # for item in results:
-        #     art_path = artifactory(item['repo'], path=item['path'])
-        #     logger.info(f"Deleting artifact: {item['repo']}:{item['path']}/{item['name']}")
+        #     art = artifactory(ctx.config.main.artifactory, item['repo'], path=item['path'])
+        #     logging.info(f"Deleting artifact: {item['repo']}:{item['path']}/{item['name']}")
         #
         #     try:
-        #         art_path.unlink()
+        #         art.unlink()
         #     except FileNotFoundError:
-        #         logger.info(f"File not found: {item['repo']}:{item['path']}/{item['name']}")
+        #         logging.info(f"File not found: {item['repo']}:{item['path']}/{item['name']}")
 
 
 @task(pre=[init.load_conf])
-def docker_container_cleanup(ctx, repo, date, pathmatch='*', purge=False, table=False):
+def container_cleanup(ctx, repo, date, pathmatch='*', threads=5, purge=False, output=False):
     """
     Docker cleanup task
     :param ctx: Context, Invoke context
@@ -210,7 +216,7 @@ def docker_container_cleanup(ctx, repo, date, pathmatch='*', purge=False, table=
     aql_query = query.render(date=date, repo=repo, pathmatch=pathmatch)
 
     try:
-        logging.info(aql_query)
+        logging.debug(aql_query)
         results = art.aql(art.create_aql_text(aql_query.replace('\n', '').replace(' ', '')))
     except requests.exceptions.HTTPError:
         logging.error("Invalid AQL query")
@@ -229,9 +235,6 @@ def docker_container_cleanup(ctx, repo, date, pathmatch='*', purge=False, table=
         logging.info("No results to show")
         exit(0)
 
-    logging.debug(len(results))
-    logging.debug(results[0])
-
     for item in results:
         table.add_row(
             f"{item['repo']}:{item['path']}/{item['name']}",
@@ -240,20 +243,66 @@ def docker_container_cleanup(ctx, repo, date, pathmatch='*', purge=False, table=
 
     table.add_row(f"{len(results)} items")
 
-    if table:
+    if output:
         console.print(table)
 
     logging.info(f"{len(results)} to process")
 
     if purge:
         while len(results) > 0:
-            for num in range(8):
+            for num in range(threads):
                 try:
                     artifact = results.pop()
-                    _thread.start_new_thread(delete_docker_tag, (ctx.config.main.artifactory, artifact, f"Thread-{num}", ))
+                    _thread.start_new_thread(
+                        delete_artifact,
+                        (ctx.config.main.artifactory, repo, artifact['path'], f"Thread-{num}")
+                    )
                 except IndexError:
                     break
             time.sleep(.500)
+
+
+@task(pre=[init.load_conf])
+def folder_cleanup(ctx, repo, path, threads=5, purge=False, output=False):
+    """
+    Docker cleanup task
+    :param ctx: Context, Invoke context
+    :param repo: string, The artifactory docker repo to target
+    :param date: string, The age of the images to target
+    :param pathmatch: string, Additional path match criteria to check
+    :param purge: bool, Toggle for purging containers
+    :param table: bool, Toggle for printing a table of images found
+    """
+    art = artifactory(ctx.config.main.artifactory, repo)
+
+    table = Table(
+        "Path",
+        "Updated",
+        "Downloaded",
+        title="Artifacts",
+    )
+
+    input_datefmt = '%Y-%m-%dT%H:%M:%S.%fZ'
+
+    #
+    # Get the children
+    #
+    for path in art:
+        if path.is_dir():
+            for item in path.stat().children:
+                    for child in path.stat().children:
+                        console.print(f"Path: {item} size: {path.stat().size}")
+
+
+def delete_artifact(conf, repo, artifact_path, thread):
+    art = artifactory(conf, repo, path=artifact_path)
+
+    try:
+        art.unlink()
+        logging.info(f"{thread}: Deleted artifact: {repo}:{artifact_path}")
+    except FileNotFoundError as e:
+        logging.info(f"{thread}: File not found: {repo}:{artifact_path}")
+        logging.error(e)
 
 
 def delete_docker_tag(conf, artifact, thread):
