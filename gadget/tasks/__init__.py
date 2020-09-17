@@ -1,6 +1,6 @@
 
 import logging
-from invoke import Collection
+from invoke import config, Collection
 from rich.logging import RichHandler
 
 from gadget.tasks import (
@@ -33,8 +33,22 @@ ns.add_collection(digicert)
 LOGGING_FORMAT = '[%(module)s:%(funcName)s:%(lineno)d] %(levelname)s: %(message)s'
 # format='[%(module).19s:%(lineno)s] %(message)s',
 
+from rich.console import Console
+
+console = Console()
+
+# console.print(config.__dict__)
+console.log(logging.getLevelName(config.debug))
+console.log(dir(config.debug))
+
+if logging.getLevelName(config.debug) == logging.getLevelName(logging.DEBUG):
+    console.print("We have debug")
+
+exit(1)
+
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=config.debug,
     format=LOGGING_FORMAT,
     datefmt="[%X]",
     handlers=[RichHandler()]
