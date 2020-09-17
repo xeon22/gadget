@@ -188,3 +188,41 @@ def audit_namespaces(ctx, zone, table=False, publish=False):
             title=zones.get(zone).get("name"),
             content=content.render(fields=len(columns), columns=columns, namespaces=namespaces),
         )
+
+
+@task(pre=[init])
+def audit_pods(ctx, zone, table=False, publish=False):
+    config.load_kube_config(context=zones[zone]['cluster'])
+    kube = client.CoreV1Api()
+    pods = kube.list_pod_for_all_namespaces()
+    columns = ["NameSpace", "Name", "Created", "Containers"]
+    console_table = Table(*columns, title="Active Pods")
+
+    logging.info(f"Found {len(pods.items)} pods")
+
+    for item in pods.items:
+        if item.metadata.namespace == "kube-system":
+            continue
+
+        containers = item.spec.containers
+        first_container = containers.pop()
+
+        console_table.add_row(
+            item.metadata.namespace,
+            item.metadata.name,
+            item.metadata.creation_timestamp.strftime("%b %d %Y"),
+            first_container.name,
+            first_container.image
+        )
+
+        for c in containers:
+            console_table.add_row(
+                "",
+                "",
+                "",
+                c.name,
+                c.image
+            )
+
+    console.print(console_table)
+    logging.info(pods.items[0])
