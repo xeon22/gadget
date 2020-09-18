@@ -11,6 +11,7 @@ import requests
 import _thread
 import time
 import logging
+import os
 
 console = Console()
 
@@ -292,6 +293,34 @@ def folder_cleanup(ctx, repo, path, threads=5, purge=False, output=False):
             for item in path.stat().children:
                     for child in path.stat().children:
                         console.print(f"Path: {item} size: {path.stat().size}")
+
+
+@task(pre=[init.load_conf])
+def fix_container_metadata(ctx, repo, path):
+    """
+    Docker metadata fix
+    :param ctx: Context, Invoke context
+    :param repo: string, The artifactory docker repo to target
+    :param date: string, The age of the images to target
+    :param pathmatch: string, Additional path match criteria to check
+    :param purge: bool, Toggle for purging containers
+    :param table: bool, Toggle for printing a table of images found
+    """
+    art = artifactory(ctx.config.main.artifactory, repo, path=os.path.join(path, "manifest.json"))
+
+    metadata = {
+        "docker.manifest": art.path_in_repo,
+        "docker.manifest.digest": f"SHA:{art.stat().sha256}",
+        "docker.manifest.type": "application/vnd.docker.distribution.manifest.v2+json",
+        "docker.repoName": repo,
+        "sha256": art.stat().sha256
+    }
+
+    try:
+        art.properties = metadata
+        logging.info(f"Sucessfully updated the properties for: {art.path_in_repo}")
+    except FileNotFoundError as e:
+        logging.error(e)
 
 
 def delete_artifact(conf, repo, artifact_path, thread):
