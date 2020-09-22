@@ -1,5 +1,5 @@
+
 from gadget.tasks import init, utils
-from urllib import parse
 from datetime import datetime
 from invoke import task
 from atlassian import Bitbucket
@@ -39,7 +39,7 @@ def branch_permission(**overrides):
 @task(pre=[init.load_conf])
 def init(ctx):
     ctx.config.main.bitbucket.client = Bitbucket(
-        url='https://api.bitbucket.org/2.0',
+        url='https://api.bitbucket.org',
         username=ctx.config.main.bitbucket.username,
         password=ctx.config.main.bitbucket.password,
         cloud=True,
@@ -108,6 +108,26 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
 
 
 @task(pre=[init])
+def fork_repo(ctx, repo, target):
+    workspace, _repo = repo_check(repo)
+
+    fork_data = {
+        "name": target,
+        "workspace": {
+            "slug": workspace
+        }
+    }
+
+    try:
+        output = ctx.config.main.bitbucket.client.post(path=f'/repositories/{workspace}/{_repo}/forks', data=fork_data)
+    except requests.exceptions.HTTPError as e:
+        logging.error(e)
+        exit(1)
+
+    console.print(output)
+
+
+@task(pre=[init])
 def delete_repo(ctx, repo):
     workspace, _repo = repo_check(repo)
 
@@ -122,13 +142,12 @@ def delete_repo(ctx, repo):
 def add_branch_checks(ctx, repo):
     workspace, _repo = repo_check(repo)
 
-    permissions = []
-
     checks = [
-        # {'kind': 'require_approvals_to_merge', 'value': 1},
-        # {'kind': 'require_tasks_to_be_completed'},
-        # {'kind': 'require_passing_builds_to_merge', 'value': 1},
-        # {'kind': 'force'},
+        {'kind': 'require_approvals_to_merge', 'value': 1},
+        {'kind': 'require_passing_builds_to_merge', 'value': 1},
+        {'kind': 'require_tasks_to_be_completed'},
+        {'kind': 'push'},
+        {'kind': 'force'},
         {'kind': 'delete'}
     ]
 
@@ -136,25 +155,17 @@ def add_branch_checks(ctx, repo):
 
     for branch in branches:
         for check in checks:
-            permissions.append(branch_permission(**check, pattern=branch))
-
-    try:
-        # logger.info(permissions)
-        # breakpoint()
-        permissions = {'branch_match_kind': 'glob', 'pattern': 'master', 'kind': 'delete', 'value': 1}
-        logging.info(permissions)
-        data = ctx.config.main.bitbucket.client.post(
-            path=f"/2.0/repositories/{workspace}/{_repo}/branch-restrictions",
-            # headers={'Content-Type': 'application/json'},
-            data=permissions
-        )
-
-        # data = ctx.config.main.bitbucket.client.add_branch_restriction(workspace, _repo, 'delete', branch_match_kind='glob', branch_pattern='master')
-        logging.info(data)
-    except requests.exceptions.HTTPError as e:
-        logging.error(e)
-    except Exception as e:
-        logging.error(e)
+            try:
+                data = ctx.config.main.bitbucket.client.add_branch_restriction(
+                    workspace, _repo, check['kind'],
+                    branch_match_kind='glob',
+                    branch_pattern=branch,
+                    value=check.get('value')
+                )
+                logging.info(data)
+                logging.info(f"Successfully applied check of kind: {check.get('kind')}")
+            except requests.exceptions.HTTPError as e:
+                logging.error(e)
 
 
 @task(pre=[init])
