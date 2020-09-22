@@ -23,3 +23,5 @@ azure-cli-core==2.11.1
 simple-rest-client==1.0.7
 azure-keyvault==4.1.0
 azure-identity==1.4.0
+jinja2==3.0.0a1
+kubernetes==12.0.0b1
