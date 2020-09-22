@@ -1,7 +1,5 @@
 
-import logging
-from invoke import Collection
-from rich.logging import RichHandler
+from invoke import config, Collection
 
 from gadget.tasks import (
     init,
@@ -32,10 +30,3 @@ ns.add_collection(kubernetes)
 ns.add_collection(azure)
 ns.add_collection(hvault)
 ns.add_collection(digicert)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(module).19s:%(lineno)s] %(message)s',
-    datefmt="[%X]",
-    handlers=[RichHandler()]
-)
