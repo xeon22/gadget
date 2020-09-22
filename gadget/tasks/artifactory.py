@@ -323,6 +323,36 @@ def fix_container_metadata(ctx, repo, path):
         logging.error(e)
 
 
+@task(pre=[init.load_conf])
+def get_container(ctx, repo, container_name, container_tag):
+    art = artifactory(ctx.config.main.artifactory, repo)
+
+    query = Template(
+        '''
+        items.find(
+            {
+                "type": "file",
+                "repo": {"$match": "{{repo}}"},
+                "@docker.repoName": "{{name}},
+                "@docker.manifest": "{{tag}}"
+            }
+        )
+        '''
+    )
+
+    aql_query = format_aql_query(
+        query.render(repo=repo, name=container_name, tag=container_tag)
+    )
+
+    try:
+        logging.debug(aql_query)
+        results = art.aql(art.create_aql_text(aql_query))
+        return results
+    except requests.exceptions.HTTPError:
+        logging.error("Invalid AQL query")
+        exit(1)
+
+
 def delete_artifact(conf, repo, artifact_path, thread):
     art = artifactory(conf, repo, path=artifact_path)
 
@@ -342,3 +372,7 @@ def delete_docker_tag(conf, artifact, thread):
         logging.info(f"{thread}: Deleted tag: {artifact['repo']}:{artifact['path']}")
     except FileNotFoundError:
         logging.info(f"{thread}: File not found: {artifact['repo']}:{artifact['path']}")
+
+
+def format_aql_query(template):
+    return template.replace('\n', '').replace(' ', '')
