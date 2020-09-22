@@ -191,38 +191,36 @@ def audit_namespaces(ctx, zone, table=False, publish=False):
 
 
 @task(pre=[init])
-def audit_pods(ctx, zone, table=False, publish=False):
+def audit_deployments(ctx, zone, table=False, publish=False):
     config.load_kube_config(context=zones[zone]['cluster'])
-    kube = client.CoreV1Api()
-    pods = kube.list_pod_for_all_namespaces()
-    columns = ["NameSpace", "Name", "Created", "Containers"]
+    kube = client.AppsV1Api()
+    deployments = kube.list_deployment_for_all_namespaces()
+    columns = ["NameSpace", "Name", "Status", "ImageName", "ImageUrl"]
     console_table = Table(*columns, title="Active Pods")
+    container_list = []
 
-    logging.info(f"Found {len(pods.items)} pods")
-
-    for item in pods.items:
+    for item in deployments.items:
         if item.metadata.namespace == "kube-system":
             continue
 
-        containers = item.spec.containers
+        containers = item.spec.template.spec.containers
         first_container = containers.pop()
 
-        console_table.add_row(
-            item.metadata.namespace,
-            item.metadata.name,
-            item.metadata.creation_timestamp.strftime("%b %d %Y"),
-            first_container.name,
-            first_container.image
+        container_list.append(
+            [
+                item.metadata.namespace,
+                item.metadata.name,
+                item.status.conditions[0].last_update_time.strftime("%b %d %Y %H:%M"),
+                first_container.name,
+                first_container.image
+            ]
         )
 
         for c in containers:
-            console_table.add_row(
-                "",
-                "",
-                "",
-                c.name,
-                c.image
-            )
+            container_list.append(["", "", "", c.name, c.image])
+
+    for item in container_list:
+        console_table.add_row(*item)
 
     console.print(console_table)
-    logging.info(pods.items[0])
+    console.print(f"Found {len(deployments.items)} deployments")
