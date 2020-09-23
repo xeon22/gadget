@@ -191,7 +191,7 @@ def audit_namespaces(ctx, zone, table=False, publish=False):
 
 
 @task(pre=[init])
-def audit_deployments(ctx, zone, table=False, publish=False):
+def audit_deployments(ctx, zone, output=None, publish=False):
     config.load_kube_config(context=zones[zone]['cluster'])
     kube = client.AppsV1Api()
     deployments = kube.list_deployment_for_all_namespaces()
@@ -223,4 +223,10 @@ def audit_deployments(ctx, zone, table=False, publish=False):
         console_table.add_row(*item)
 
     console.print(console_table)
-    console.print(f"Found {len(deployments.items)} deployments")
+    console.print(f"Found {console_table.row_count} deployments")
+
+    if output is not None:
+        with open(output, 'w') as o:
+            o.write(f"{','.join(columns)}\n")
+            for item in container_list:
+                o.write(f"{','.join(item)}\n")
