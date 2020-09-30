@@ -39,7 +39,7 @@ def branch_permission(**overrides):
 @task(pre=[init.load_conf])
 def init(ctx):
     ctx.config.main.bitbucket.client = Bitbucket(
-        url='https://api.bitbucket.org',
+        url='https://api.bitbucket.org/2.0',
         username=ctx.config.main.bitbucket.username,
         password=ctx.config.main.bitbucket.password,
         cloud=True,
@@ -99,12 +99,14 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
     }
 
     try:
-        output = ctx.config.main.bitbucket.client.put(path=f'/repositories/{workspace}/{_repo}', data=repo_data)
+        output = ctx.config.main.bitbucket.client.put(path=f'/2.0/repositories/{workspace}/{_repo}', data=repo_data)
     except requests.exceptions.HTTPError as e:
         logging.error(e)
         exit(1)
 
     console.print(output)
+
+    add_branch_checks(ctx, repo)
 
 
 @task(pre=[init])
@@ -162,7 +164,7 @@ def add_branch_checks(ctx, repo):
                     branch_pattern=branch,
                     value=check.get('value')
                 )
-                logging.info(data)
+                logging.debug(data)
                 logging.info(f"Successfully applied check of kind: {check.get('kind')}")
             except requests.exceptions.HTTPError as e:
                 logging.error(e)
@@ -204,9 +206,10 @@ def get_members(ctx, workspace):
 
 
 @task(pre=[init])
-def get_branches(ctx, workspace, repo):
-    data = ctx.config.main.bitbucket.client.get(path=f"/repositories/{workspace}/{repo}/refs/branches")
-    # console.print(data)
+def get_branches(ctx, repo):
+    workspace, _repo = repo_check(repo)
+    # data = ctx.config.main.bitbucket.client.get_branches(workspace, _repo, filter='', limit=99999, details=True)
+    data = ctx.config.main.bitbucket.client.get(path=f"/2.0/repositories/{workspace}/{_repo}/refs/branches")
 
     table = Table(
         "Branch",
@@ -233,158 +236,5 @@ def get_branches(ctx, workspace, repo):
 
     console.print(table)
 
-    default_branch_config = [
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'push',
-            'pattern': 'develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [
-                {
-                    'account_privilege': None,
-                    'default_permission': 'read',
-                    'full_slug': 'capcosaas:process-engine',
-                    'name': 'process-engine',
-                    'owner': {
-                        'display_name': 'capco-saas',
-                        'type': 'team',
-                        'username': 'capcosaas',
-                        'uuid': '{739e0a79-a86d-4343-9ad4-b64852860de4}',
-                    },
-                    'slug': 'process-engine',
-                    'type': 'group',
-                    'workspace': {
-                        'name': 'capco-saas',
-                        'slug': 'capcosaas',
-                        'type': 'workspace',
-                        'uuid': '{739e0a79-a86d-4343-9ad4-b64852860de4}'
-                    },
-                },
-            ],
-            'kind': 'restrict_merges',
-            'pattern': 'develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None,
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'force',
-            'pattern': 'develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'delete',
-            'pattern': 'develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'require_approvals_to_merge',
-            'pattern': 'develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': 1
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'require_approvals_to_merge',
-            'pattern': 'master',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': 1
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'require_tasks_to_be_completed',
-            'pattern': 'develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'require_tasks_to_be_completed',
-            'pattern': 'master',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'push',
-            'pattern': 'develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'push',
-            'pattern': 'master',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [
-                {
-                    'account_privilege': None,
-                    'default_permission': 'read',
-                    'full_slug': 'capcosaas:process-engine',
-                    'name': 'process-engine',
-                    'owner': {
-                        'display_name': 'capco-saas',
-                        'type': 'team',
-                        'username': 'capcosaas',
-                        'uuid': '{739e0a79-a86d-4343-9ad4-b64852860de4}',
-                    },
-                    'slug': 'process-engine',
-                    'type': 'group',
-                },
-            ],
-            'kind': 'restrict_merges',
-            'pattern': 'pz_develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': None,
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'require_approvals_to_merge',
-            'pattern': 'develop',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': 1
-        },
-        {
-            'branch_match_kind': 'glob',
-            'groups': [],
-            'kind': 'require_approvals_to_merge',
-            'pattern': 'master',
-            'type': 'branchrestriction',
-            'users': [],
-            'value': 1
-        },
-    ]
+    console.print(data['values'][-1])
+
