@@ -2,7 +2,7 @@ import pathlib
 from datetime import datetime
 from gadget.tasks import init, utils
 from invoke import task, tasks
-from artifactory import ArtifactoryPath
+from artifactory import ArtifactoryPath, ArtifactorySaaSPath
 from urllib.parse import urljoin
 from rich.console import Console
 from rich.table import Table
@@ -25,10 +25,15 @@ def artifactory(conf, repo, path=None):
     :return ArtifactoryPath: ArtifactoryPath
     """
 
+    url = f"https://{conf.server}/artifactory/{repo}"
+
     if path is not None:
-        return ArtifactoryPath(f"https://{conf.server}/artifactory/{repo}/{path}", auth=(conf.username, conf.password))
+        url + f"/{path}"
+
+    if conf.get('apikey'):
+        return ArtifactorySaaSPath(url, apikey=conf.password)
     else:
-        return ArtifactoryPath(f"https://{conf.server}/artifactory/{repo}", auth=(conf.username, conf.password))
+        return ArtifactorySaaSPath(url, auth=(conf.username, conf.password))
 
 
 def get_url(list):
@@ -37,7 +42,7 @@ def get_url(list):
     :return url: string
     """
 
-    base_url = "https://repo.platformzero.build"
+    base_url = "https://platformzero.jfrog.io"
     path = pathlib.PurePath("/artifactory")
 
     abs_path = path.joinpath(path.as_posix(), *list)
@@ -48,9 +53,9 @@ def get_url(list):
 
 
 @task
-def artifact_properties(ctx, artifact):
-    logging.info(f"Adding properties to artifact: {artifact}")
-    art = ArtifactoryPath(ctx.config.main.artifactory, artifact)
+def artifact_properties(ctx, repo, path):
+    logging.info(f"Adding properties to artifact: {path}")
+    art = artifactory(ctx.config.main.artifactory, repo, path)
 
     import time
     from datetime import datetime
@@ -218,6 +223,8 @@ def container_cleanup(ctx, repo, date, pathmatch='*', threads=5, purge=False, ou
 
     try:
         logging.debug(aql_query)
+        # breakpoint()
+
         results = art.aql(art.create_aql_text(aql_query.replace('\n', '').replace(' ', '')))
     except requests.exceptions.HTTPError:
         logging.error("Invalid AQL query")

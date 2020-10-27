@@ -44,7 +44,7 @@ def init(ctx):
         password=ctx.config.main.bitbucket.password,
         cloud=True,
         api_root='',
-        api_version='2.0'
+        api_version=''
     )
 
 
@@ -58,7 +58,7 @@ def get_repo(ctx, repo):
     #     url_path=f"/repositories/{workspace}?{params}"
 
     try:
-        data = ctx.config.main.bitbucket.client.get(path=parse.quote(url_path))
+        data = ctx.config.main.bitbucket.client.get(path=url_path)
         console.print(data)
         # ctx.update({'cache': {'repositories': data}})
     except requests.exceptions.HTTPError as e:
@@ -99,7 +99,7 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
     }
 
     try:
-        output = ctx.config.main.bitbucket.client.put(path=f'/2.0/repositories/{workspace}/{_repo}', data=repo_data)
+        output = ctx.config.main.bitbucket.client.put(path=f'/repositories/{workspace}/{_repo}', data=repo_data)
     except requests.exceptions.HTTPError as e:
         logging.error(e)
         exit(1)
@@ -162,6 +162,8 @@ def add_branch_checks(ctx, repo):
                     workspace, _repo, check['kind'],
                     branch_match_kind='glob',
                     branch_pattern=branch,
+                    groups=[],
+                    # groups=["Everybody"],
                     value=check.get('value')
                 )
                 logging.debug(data)
