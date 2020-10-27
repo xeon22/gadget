@@ -1,4 +1,5 @@
-FROM python:3.7-buster AS builder
+ARG DOCKER_REPO_BASE=docker.io
+FROM ${DOCKER_REPO_BASE}/python:3.7-buster AS builder
 ENV PYTHONPATH=$PYTHONPATH:/app/vendor
 
 WORKDIR /usr/src/app
@@ -8,12 +9,12 @@ RUN pip install setuptools_scm
 RUN pip install -r requirements.txt --target=vendor
 RUN pip install $(pwd) --upgrade --target=vendor
 
-FROM python:3.7-alpine
+FROM ${DOCKER_REPO_BASE}/python:3.7-slim
 ENV PYTHONPATH=$PYTHONPATH:/app/vendor
 
 WORKDIR /app
 # RUN groupadd -g 1001 appuser; useradd -u 1001 -m -g 1001 -s /usr/sbin/nologin appuser; chown -R 1001:1001 /app
-RUN addgroup -g 1001 appuser; adduser -u 1001 -G appuser -s /sbin/nologin -S appuser
+RUN groupadd -g 1001 appuser; useradd -u 1001 -g appuser -s /sbin/nologin -r appuser
 COPY --from=builder --chown=1001:1001 /usr/src/app/vendor/ /app/vendor/
 COPY --from=builder --chown=1001:1001 /usr/src/app/vendor/bin/gadget /usr/local/bin/gadget
 
