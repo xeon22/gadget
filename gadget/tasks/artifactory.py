@@ -25,10 +25,12 @@ def artifactory(conf, repo, path=None):
     :return ArtifactoryPath: ArtifactoryPath
     """
 
-    url = f"https://{conf.server}/artifactory/{repo}"
+    base_url = f"https://{conf.server}/artifactory"
 
     if path is not None:
-        url + f"/{path}"
+        url = f"{base_url}/{repo}/{path}"
+    else:
+        url = f"{base_url}/{repo}"
 
     if conf.get('apikey'):
         return ArtifactorySaaSPath(url, apikey=conf.password)
@@ -365,9 +367,9 @@ def delete_artifact(conf, repo, artifact_path, thread):
 
     try:
         art.unlink()
-        logging.info(f"{thread}: Deleted artifact: {repo}:{artifact_path}")
+        logging.info(f"{thread}: Deleted artifact: {art.repo}{art.path_in_repo}")
     except FileNotFoundError as e:
-        logging.info(f"{thread}: File not found: {repo}:{artifact_path}")
+        logging.info(f"{thread}: File not found: {art.repo}{art.path_in_repo}")
         logging.error(e)
 
 
