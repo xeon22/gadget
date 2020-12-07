@@ -51,7 +51,10 @@ def get_contexts(ctx):
 
 @task(pre=[init])
 def get_pods(ctx, zone):
-    config.load_kube_config(context=zones[zone]['cluster'])
+    try:
+        config.load_kube_config(context=zones[zone]['cluster'])
+    except:
+        config.load_incluster_config()
     kube = client.CoreV1Api()
     k8s = kube.list_pod_for_all_namespaces()
 
@@ -87,7 +90,10 @@ def get_pods(ctx, zone):
 
 @task(pre=[init])
 def cleanup_jobs(ctx, zone, include_completed=False, purge=False):
-    config.load_kube_config(context=zones[zone]['cluster'])
+    try:
+        config.load_kube_config(context=zones[zone]['cluster'])
+    except:
+        config.load_incluster_config()
     kube = client.BatchV1Api()
     k8s = kube.list_job_for_all_namespaces()
     jobs = k8s.items
@@ -128,7 +134,10 @@ def cleanup_jobs(ctx, zone, include_completed=False, purge=False):
 
 @task(pre=[init])
 def audit_namespaces(ctx, zone, table=False, publish=False):
-    config.load_kube_config(context=zones[zone]['cluster'])
+    try:
+        config.load_kube_config(context=zones[zone]['cluster'])
+    except:
+        config.load_incluster_config()
     kube = client.CoreV1Api()
     ns = kube.list_namespace()
     columns = ["Name", "Created", "ClientId", "WorkStream", "ServiceClass", "Pods"]
@@ -192,7 +201,10 @@ def audit_namespaces(ctx, zone, table=False, publish=False):
 
 @task(pre=[init])
 def audit_deployments(ctx, zone, output=None, publish=False):
-    config.load_kube_config(context=zones[zone]['cluster'])
+    try:
+        config.load_kube_config(context=zones[zone]['cluster'])
+    except:
+        config.load_incluster_config()
     kube = client.AppsV1Api()
     deployments = kube.list_deployment_for_all_namespaces()
     columns = ["NameSpace", "Name", "Status", "ImageName", "ImageUrl"]
