@@ -39,28 +39,23 @@ def branch_permission(**overrides):
 @task(pre=[init.load_conf])
 def init(ctx):
     ctx.config.main.bitbucket.client = Bitbucket(
-        url='https://api.bitbucket.org/2.0',
+        url='https://api.bitbucket.org',
         username=ctx.config.main.bitbucket.username,
         password=ctx.config.main.bitbucket.password,
         cloud=True,
         api_root='',
-        api_version=''
+        api_version='2.0'
     )
 
 
 @task(pre=[init])
 def get_repo(ctx, repo):
     workspace, _repo = repo_check(repo)
-    url_path = f"/repositories/{workspace}/{_repo}"
-
-    # if _repo.find('*', len(repo) - 1, len(repo)) < 1:
-    #     params = {'q': {'full_name': f"{workspace}/{_repo}"}}
-    #     url_path=f"/repositories/{workspace}?{params}"
+    url_path = f"/2.0/repositories/{workspace}/{_repo}"
 
     try:
         data = ctx.config.main.bitbucket.client.get(path=url_path)
         console.print(data)
-        # ctx.update({'cache': {'repositories': data}})
     except requests.exceptions.HTTPError as e:
         logging.error(e)
 
@@ -74,7 +69,7 @@ def get_branch_checks(ctx, repo):
 
 
 @task(pre=[init])
-def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, branch='master', language=None):
+def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, branch='develop', language=None):
     workspace, _repo = repo_check(repo)
 
     repo_data = {
@@ -99,14 +94,54 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
     }
 
     try:
-        output = ctx.config.main.bitbucket.client.put(path=f'/repositories/{workspace}/{_repo}', data=repo_data)
+        output = ctx.config.main.bitbucket.client.put(path=f'/2.0/repositories/{workspace}/{_repo}', data=repo_data)
+        # ctx.config.main.bitbucket.client.create_repo(project, repository, forkable=False, is_private=True)
     except requests.exceptions.HTTPError as e:
         logging.error(e)
         exit(1)
 
     console.print(output)
 
+    add_branches(ctx, output)
     add_branch_checks(ctx, repo)
+
+
+# @task(pre=[init])
+def add_branches(ctx, repo):
+    branches = ['master', 'develop']
+
+    clone_url = [item for item in repo['links']['clone'] if item['name'] == 'ssh'][0].get('href')
+
+    console.print(clone_url)
+
+    import tempfile
+    import os
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        console.print('Created temporary directory', tmpdirname)
+        os.chdir(tmpdirname)
+
+        ctx.run(f"git clone {clone_url} .")
+
+        for branch in branches:
+            ctx.run(f"git checkout -b {branch}")
+            url = "https://gitignore.io/api/java"
+            r = requests.get(url)
+
+            with open('.gitignore', 'wb') as fh:
+                fh.write(r.content)
+
+            ctx.run(f"git add .gitignore")
+            ctx.run('git commit -m "Initial commit"')
+            ctx.run('git checkout -b develop')
+            ctx.run('git push --all origin')
+
+    # except requests.exceptions.HTTPError as e:
+    #     logging.error(e)
+    #     exit(1)
+
+    # Creates a branch using the information provided in the request.
+    # The authenticated user must have REPO_WRITE permission for the context repository to call this resource.
 
 
 @task(pre=[init])
@@ -162,8 +197,6 @@ def add_branch_checks(ctx, repo):
                     workspace, _repo, check['kind'],
                     branch_match_kind='glob',
                     branch_pattern=branch,
-                    groups=[],
-                    # groups=["Everybody"],
                     value=check.get('value')
                 )
                 logging.debug(data)
@@ -238,5 +271,13 @@ def get_branches(ctx, repo):
 
     console.print(table)
 
-    console.print(data['values'][-1])
+
+@task(pre=[init])
+def get_projects(ctx, workspace):
+    projects = ctx.config.main.bitbucket.client.put(f"/2.0/workspaces/{workspace}/projects")
+
+    console.print(projects)
+
+    for project in projects:
+        console.print(project)
 
