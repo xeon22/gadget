@@ -10,6 +10,13 @@ import logging
 
 console = Console()
 
+def language_code(lang):
+    languages = {
+        "java": "java",
+        "javascript": "node"
+    }
+
+    return languages.get(lang)
 
 def repo_check(repo):
     try:
@@ -108,9 +115,8 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
 
 # @task(pre=[init])
 def add_branches(ctx, repo):
-    branches = ['master', 'develop']
-
     clone_url = [item for item in repo['links']['clone'] if item['name'] == 'ssh'][0].get('href')
+    lang_code = language_code(repo['language'])
 
     console.print(clone_url)
 
@@ -120,12 +126,12 @@ def add_branches(ctx, repo):
     with tempfile.TemporaryDirectory() as tmpdirname:
         console.print('Created temporary directory', tmpdirname)
         os.chdir(tmpdirname)
+        console.print(os.path.abspath(os.curdir))
 
-        ctx.run(f"git clone {clone_url} .")
-
-        for branch in branches:
-            ctx.run(f"git checkout -b {branch}")
-            url = "https://gitignore.io/api/java"
+        try:
+            ctx.run(f"git clone {clone_url} .")
+            ctx.run("git checkout -b master")
+            url = f"https://gitignore.io/api/{lang_code}"
             r = requests.get(url)
 
             with open('.gitignore', 'wb') as fh:
@@ -136,12 +142,8 @@ def add_branches(ctx, repo):
             ctx.run('git checkout -b develop')
             ctx.run('git push --all origin')
 
-    # except requests.exceptions.HTTPError as e:
-    #     logging.error(e)
-    #     exit(1)
-
-    # Creates a branch using the information provided in the request.
-    # The authenticated user must have REPO_WRITE permission for the context repository to call this resource.
+        except Exception as e:
+            console.print(e)
 
 
 @task(pre=[init])
@@ -169,7 +171,7 @@ def delete_repo(ctx, repo):
     workspace, _repo = repo_check(repo)
 
     try:
-        ctx.config.main.bitbucket.client.delete(path=f'/repositories/{workspace}/{_repo}')
+        ctx.config.main.bitbucket.client.delete(path=f'/2.0/repositories/{workspace}/{_repo}')
         console.print(f"Deleted repo: {repo}", style="green")
     except requests.exceptions.HTTPError as e:
         console.print(e, style="red")
