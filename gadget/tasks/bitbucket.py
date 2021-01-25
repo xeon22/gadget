@@ -76,7 +76,7 @@ def get_branch_checks(ctx, repo):
 
 
 @task(pre=[init])
-def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, branch='develop', language=None):
+def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, branch='develop', language=None, init=False):
     workspace, _repo = repo_check(repo)
 
     repo_data = {
@@ -109,7 +109,9 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
 
     console.print(output)
 
-    add_branches(ctx, output)
+    if init:
+        add_branches(ctx, output)
+
     add_branch_checks(ctx, repo)
 
 
