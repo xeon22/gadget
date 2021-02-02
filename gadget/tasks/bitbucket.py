@@ -348,6 +348,7 @@ def get_projects(ctx, workspace):
 
 @task(pre=[init])
 def get_users(ctx, workspace):
+
     data = ctx.config.main.bitbucket.client.get(f"/2.0/workspaces/{workspace}/permissions")
     console.print(data['values'][0])
 
@@ -394,6 +395,14 @@ def get_users(ctx, workspace):
 
 
 def init_db(ctx, db="bitbucket.db"):
+    """
+    Initializes a sqlite db for the permissions load:
+
+    :param db:
+
+    :return:
+    """
+
     schema = [
         """
         CREATE TABLE user (
@@ -429,26 +438,6 @@ def init_db(ctx, db="bitbucket.db"):
 
         connection.commit()
         connection.close()
-
-
-def insert_user(conn, data):
-    """
-    Create a new task
-    :param conn:
-    :param task:
-    :return:
-    """
-
-    sql = """
-        INSERT INTO user(uuid, display_name, nickname, account_id)
-        VALUES(?,?,??)
-    """
-
-    cur = conn.cursor()
-    cur.execute(sql)
-    conn.commit()
-
-    return cur.lastrowid
 
 
 @task(pre=[init])
@@ -508,6 +497,15 @@ def get_permissions(ctx, workspace, table=False):
 
 @task()
 def load_permissions(ctx, input="results.json", db="bitbucket.db"):
+    """
+    Loads the permissions json output from get_permissons task:
+
+    :param input:
+    :param db:
+
+    :return:
+    """
+
     init_db(ctx)
 
     raw = json.load(open(input, 'r'))
