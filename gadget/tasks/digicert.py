@@ -1,9 +1,10 @@
 import base64
+import OpenSSL.crypto
+
 from gadget.tasks import init, utils, confluence
 from invoke import task, Collection, Executor
-from invoke.main import program
-# from fabric.main import program
-
+from azure.identity import AzureCliCredential, DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 from rich.console import Console
 from jinja2 import Template
 from rich.table import Table
@@ -18,13 +19,14 @@ class OrdersResource(Resource):
     actions = {
         'list': {'method': 'GET', 'url': '/order/certificate'},
         'info': {'method': 'GET', 'url': '/order/certificate/{}'},
+        'renew': {'method': 'POST', 'url': '/order/certificate/ssl_basic'},
     }
 
 
 class CertResource(Resource):
     actions = {
         'download': {'method': 'GET', 'url': '/certificate/download/order/{}/format/{}'},
-        'renew': {'method': 'POST', 'url': '/order/certificate/ssl_basic'}
+        'email': {'method': 'PUT', 'url': '/certificate/{}/sendemail'}
     }
 
 
@@ -53,12 +55,30 @@ def init(ctx, headers=dict(), params=dict()):
 
 
 @task(pre=[init])
+def init_vault(ctx, vault=None):
+    if vault is None:
+        vault = ctx.config.main.digicert.keyvault
+
+    try:
+        credential = AzureCliCredential()
+    except Exception as e:
+        credential = DefaultAzureCredential()
+
+    client = SecretClient(vault_url=f"https://{vault}.vault.azure.net/", credential=credential)
+
+    ctx.run_state.vault_client = client
+
+    return client
+
+
+@task(pre=[init])
 def list_orders(ctx):
     api = ctx.config.main.digicert.api
     orders = api.orders.list(body=None, params={'filters[status]': 'issued'})
 
     columns = [
-        "OrderId",
+        "Order Id",
+        "Cert Id",
         "CommonName",
         "Valid From",
         "Valid Until",
@@ -78,6 +98,7 @@ def list_orders(ctx):
 
         row = [
             str(item['id']),
+            str(item['certificate']['id']),
             item['certificate']['common_name'],
             item['certificate']['valid_from'],
             item['certificate']['valid_till'],
@@ -122,88 +143,71 @@ def list_orders(ctx):
 
 
 @task(pre=[init])
-def order(ctx, id):
+def order(ctx, id, output=True):
     api = ctx.config.main.digicert.api
     order = api.orders.info(id).body
 
-    grid = Table.grid()
+    if output:
+        grid = Table.grid()
 
-    grid.add_column(width=20, overflow="fold", style="frame")
-    grid.add_row("OrderId", str(order['id']), style="frame")
-    grid.add_row("CommonName", order['certificate']['common_name'])
-    grid.add_row("Valid From", order['certificate']['valid_from'])
-    grid.add_row("Valid Until", order['certificate']['valid_till'])
-    grid.add_row("Created", order['certificate']['date_created'])
-    grid.add_row("Dns Names", str(order['certificate']['dns_names']))
-    grid.add_row("Product", order['product']['name'])
-    grid.add_row("Key Size", str(order['certificate']['key_size']))
-    grid.add_row(
-        "Organization",
-        "\n".join(
-            [
-                order['organization']['name'],
-                order['organization']['assumed_name'],
-                order['organization']['display_name'],
-                order['organization']['city'],
-                order['organization']['state'],
-                order['organization']['country'].upper(),
-                order['organization']['telephone'],
-            ]
+        grid.add_column(width=20, overflow="fold", style="frame")
+        grid.add_row("OrderId", str(order['id']), style="frame")
+        grid.add_row("CommonName", order['certificate']['common_name'])
+        grid.add_row("Valid From", order['certificate']['valid_from'])
+        grid.add_row("Valid Until", order['certificate']['valid_till'])
+        grid.add_row("Created", order['certificate']['date_created'])
+        grid.add_row("Dns Names", str(order['certificate']['dns_names']))
+        grid.add_row("Product", order['product']['name'])
+        grid.add_row("Key Size", str(order['certificate']['key_size']))
+        grid.add_row(
+            "Organization",
+            "\n".join(
+                [
+                    order['organization']['name'],
+                    order['organization']['assumed_name'],
+                    order['organization']['display_name'],
+                    order['organization']['city'],
+                    order['organization']['state'],
+                    order['organization']['country'].upper(),
+                    order['organization']['telephone'],
+                ]
+            )
         )
-    )
 
-    console.print(grid)
+        console.print(grid)
+
+    return order
 
 
 @task(pre=[init])
-def download(ctx, id, format="pem_nointermediate", output=None):
+def download(ctx, id, format="pem_nointermediate", output=False):
     api = ctx.config.main.digicert.api
     cert = api.cert.download(id, format).body
-    console.print(cert.decode('utf-8'))
 
     if output:
+        console.print(cert.decode('utf-8'))
         with open(output, 'w') as f:
             f.write(cert.decode('utf-8'))
 
+    return cert
+
 
 @task(pre=[init])
-def renew(ctx, order, vault, keyName, csrName=None, certName=None):
-    from azure.identity import AzureCliCredential, DefaultAzureCredential
-    from azure.keyvault.secrets import SecretClient
-
-    import OpenSSL.crypto
-    from OpenSSL.crypto import load_certificate_request, FILETYPE_PEM
-
+def renew(ctx, order, vault, csrName, certName=None):
     api = ctx.config.main.digicert.api
     order_data = api.orders.info(order).body
+    vault_client = ctx.config.azure.vault_client
 
     console.log(order_data)
 
-    if csrName is None:
-        csrName = keyName.replace('-key', '-csr')
-
     if certName is None:
-        certName = keyName.replace('-key', '-cert')
-
-    try:
-        credential = AzureCliCredential()
-    except Exception as e:
-        credential = DefaultAzureCredential()
+        certName = csrName.replace('-key', '-crt')
 
     vault_client = SecretClient(vault_url=f"https://{vault}.vault.azure.net/", credential=credential)
-    
-    vault_key_name = vault_client.get_secret(keyName)
     csr_key_name = vault_client.get_secret(csrName)
-
-    tls_private_key = base64.b64decode(vault_key_name.value).decode('utf-8')
     tls_order_csr = base64.b64decode(csr_key_name.value).decode('utf-8')
 
-    print(tls_private_key)
-    print(tls_order_csr)
-
     console.log("Loading the CSR")
-    req = load_certificate_request(FILETYPE_PEM, tls_order_csr)
-    subject = dict(req.get_subject().get_components())
 
     payload = {
         'certificate': {
@@ -215,18 +219,51 @@ def renew(ctx, order, vault, keyName, csrName=None, certName=None):
         },
         'container': order_data['container']['id'],
         'auto_renew': 0,
+        'order_validity': {'years': order_data['validity_years']},
         'organization': {'id': order_data['organization']['id']},
-        'order_validity': order_data['validity_years'],
-        'validity_years': order_data['validity_years'],
-        'payment_method': 'card',
-        'additional_emails': [
-            'mark.pimentel@capco.com',
-            'catodevopsteam@capco.com',
-        ]
+        'payment_method': 'balance',
+        'renewal_of_order_id': order_data['id'],
     }
 
-    console.log(payload)
+    order = api.orders.renew(body=payload).body
+    email_cert(ctx, order['cerificate_id'])
 
-    # order = api.orders.renew
 
-    # print(response.body)
+@task(pre=[init, init_vault])
+def upload_cert(ctx, order):
+    vault = init_vault(ctx, vault=ctx.config.main.digicert.keyvault)
+
+    cert_data = download(ctx, order, output=False)
+    cert_name = get_cert_data(cert_data)
+    secret_value = base64.b64encode(cert_data)
+    vault_secret_name = f"{cert_name}-crt"
+
+    secret = vault.set_secret(vault_secret_name, secret_value, content_type='certificate')
+    console.log(f"Successfully updated cert: f{secret.id}")
+
+
+@task(pre=[init])
+def email_cert(ctx, orderid, emails=None, msg=None):
+    api = ctx.config.main.digicert.api
+
+    if emails is None:
+        emails = ctx.config.main.digicert.emails
+
+    order_detail = order(ctx, orderid, output=False)
+
+    payload = {
+        "emails": emails,
+        "certificate_collect_format": "downloadlink",
+        "custom_message": msg
+    }
+
+    result = api.cert.email(order_detail['certificate']['id'], body=payload)
+    console.log(result)
+
+
+def get_cert_data(cert):
+    certobj = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
+    subject = certobj.get_subject()
+    common_name = subject.get_components()[-1]
+    name = common_name[-1].decode('utf-8')
+    return name.replace('.', '-').replace('*', 'wildcard')

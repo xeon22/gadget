@@ -36,6 +36,7 @@ def load_conf(ctx, config=None):
         fh = open(config, 'rb')
         conf = yaml.load(fh.read(), Loader=yaml.FullLoader)
         ctx.config.main = conf
+        ctx.run_state = {}
     except FileNotFoundError as e:
         logging.error(e)
         exit(1)
