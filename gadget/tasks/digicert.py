@@ -1,5 +1,5 @@
 import base64
-import OpenSSL.crypto
+import logging
 
 from gadget.tasks import init, utils, confluence
 from invoke import task, Collection, Executor
@@ -10,6 +10,7 @@ from jinja2 import Template
 from rich.table import Table
 from simple_rest_client.api import API
 from simple_rest_client.resource import Resource
+from OpenSSL import crypto
 
 
 console = Console()
@@ -235,11 +236,49 @@ def upload_cert(ctx, order):
 
     cert_data = download(ctx, order, output=False)
     cert_name = get_cert_data(cert_data)
-    secret_value = base64.b64encode(cert_data)
-    vault_secret_name = f"{cert_name}-crt"
 
+    secret_value = base64.b64encode(cert_data).decode('utf-8')
+
+    vault_secret_name = f"{cert_name}-crt"
     secret = vault.set_secret(vault_secret_name, secret_value, content_type='certificate')
-    console.log(f"Successfully updated cert: f{secret.id}")
+
+    logging.info(f"Successfully updated cert: f{secret.id}")
+
+
+@task(pre=[init, init_vault])
+def upload_keystore(ctx, basename):
+    vault = init_vault(ctx, vault=ctx.config.main.digicert.keyvault)
+    keystore_name = f"{basename}-pfx"
+
+    state = {
+        'passphrase': vault.get_secret(f"{basename}-passphrase").value
+    }
+
+    for item in ["key", "crt"]:
+        object_name = f"{basename}-{item}"
+
+        try:
+            raw_data = vault.get_secret(object_name)
+
+            data = base64.b64decode(raw_data.value).decode('utf-8')
+
+            logging.info(f"Fetched {object_name} from keyvault")
+        except Exception as e:
+            logging.error(e)
+
+        state.update({item: data})
+
+    console.log(state)
+
+    certificate = crypto.load_certificate(crypto.FILETYPE_PEM, state.get('crt'))
+    private_key = crypto.load_privatekey(crypto.FILETYPE_PEM, state.get('key'))
+
+    p12 = crypto.PKCS12()
+    p12.set_privatekey(private_key)
+    p12.set_certificate(certificate)
+    p12data = p12.export(state['passphrase'])
+
+    vault.set_secret(keystore_name, base64.b64encode(p12data).decode('utf-8'))
 
 
 @task(pre=[init])
@@ -262,7 +301,7 @@ def email_cert(ctx, orderid, emails=None, msg=None):
 
 
 def get_cert_data(cert):
-    certobj = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
+    certobj = crypto.load_certificate(crypto.FILETYPE_PEM, cert)
     subject = certobj.get_subject()
     common_name = subject.get_components()[-1]
     name = common_name[-1].decode('utf-8')
