@@ -268,8 +268,6 @@ def upload_keystore(ctx, basename):
 
         state.update({item: data})
 
-    console.log(state)
-
     certificate = crypto.load_certificate(crypto.FILETYPE_PEM, state.get('crt'))
     private_key = crypto.load_privatekey(crypto.FILETYPE_PEM, state.get('key'))
 
