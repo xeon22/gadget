@@ -11,6 +11,7 @@ import requests
 import logging
 import json
 import sqlite3
+import tempfile
 import os
 import re
 
@@ -51,7 +52,7 @@ def branch_permission(**overrides):
 
 @task(pre=[init.load_conf])
 def init(ctx):
-    ctx.config.main.bitbucket.client = Bitbucket(
+    client = Bitbucket(
         url='https://api.bitbucket.org',
         username=ctx.config.main.bitbucket.username,
         password=ctx.config.main.bitbucket.password,
@@ -60,6 +61,9 @@ def init(ctx):
         api_version='2.0'
     )
 
+    ctx.run_state.bb = client
+    return client
+
 
 @task(pre=[init])
 def get_repo(ctx, repo):
@@ -67,16 +71,16 @@ def get_repo(ctx, repo):
     url_path = f"/2.0/repositories/{workspace}/{_repo}"
 
     try:
-        data = ctx.config.main.bitbucket.client.get(path=url_path)
+        data = ctx.run_state.bb.get(path=url_path)
         console.print(data)
     except requests.exceptions.HTTPError as e:
         logging.error(e)
 
 
 @task(pre=[init])
-def get_all_repos(ctx, workspace):
+def list_repos(ctx, workspace):
     # workspace, _repo = repo_check(repo)
-    url_path = f"/2.0/repositories/{workspace}?sort=name"
+    url_path = f"/repositories/{workspace}?sort=name"
     results = list()
 
     try:
@@ -91,7 +95,7 @@ def get_all_repos(ctx, workspace):
             logging.info(f"Fetching results page: {data['page']}")
 
             url_path = f"{u.path}?{u.query}"
-            data = ctx.config.main.bitbucket.client.get(path=url_path)
+            data = ctx.run_state.bb.get(path=url_path)
             results.extend(data['values'])
 
             has_next = data.get('next')
@@ -122,13 +126,74 @@ def get_all_repos(ctx, workspace):
     console.print(table)
 
 
+@task(pre=[init])
+def add_branches(ctx, repo, init=False):
+    clone_url = [item for item in repo['links']['clone'] if item['name'] == 'ssh'][0].get('href')
+    lang_code = language_code(repo['language'])
+
+    console.print(clone_url)
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        console.print('Created temporary directory', tmpdirname)
+        os.chdir(tmpdirname)
+        console.print(os.path.abspath(os.curdir))
+
+        try:
+            ctx.run(f"git clone {clone_url} .")
+            ctx.run("git checkout -b master")
+            url = f"https://gitignore.io/api/{lang_code}"
+            r = requests.get(url)
+
+            with open('.gitignore', 'wb') as fh:
+                fh.write(r.content)
+
+            ctx.run(f"git add .gitignore")
+            ctx.run('git commit -m "Initial commit"')
+            ctx.run('git checkout -b develop')
+            ctx.run('git push --all origin')
+
+        except Exception as e:
+            console.print(e)
+
 
 @task(pre=[init])
-def get_branch_checks(ctx, repo):
+def list_restrictions(ctx, repo):
     workspace, _repo = repo_check(repo)
-    data = ctx.config.main.bitbucket.client.get_branch_restrictions(workspace, _repo)
-    # data = ctx.config.main.bitbucket.client.get(path=f"/repositories/{workspace}/{_repo}/branch-restrictions")
+    data = ctx.run_state.bb.get_branch_restrictions(workspace, _repo)
     console.print(data)
+
+
+@task(pre=[init])
+def add_branch_checks(ctx, repo, init=False):
+    workspace, _repo = repo_check(repo)
+
+    checks = [
+        {'kind': 'require_approvals_to_merge', 'value': 1},
+        {'kind': 'require_passing_builds_to_merge', 'value': 1},
+        {'kind': 'require_tasks_to_be_completed'},
+        {'kind': 'push'},
+        {'kind': 'force'},
+        {'kind': 'delete'}
+    ]
+
+    branches = ['master', 'develop']
+
+    for branch in branches:
+        for check in checks:
+            try:
+                data = ctx.run_state.bb.add_branch_restriction(
+                    workspace, _repo, check['kind'],
+                    branch_match_kind='glob',
+                    branch_pattern=branch,
+                    value=check.get('value'),
+                    groups=[
+                        # {"owner": {"username": None}, "slug": None}
+                    ]
+                )
+                logging.debug(data)
+                logging.info(f"Successfully applied check of kind: {check.get('kind')}")
+            except requests.exceptions.HTTPError as e:
+                logging.error(f"{e.response.status_code}: {e.response.text}")
 
 
 @task(pre=[init])
@@ -157,7 +222,7 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
     }
 
     try:
-        output = ctx.config.main.bitbucket.client.put(path=f'/2.0/repositories/{workspace}/{_repo}', data=repo_data)
+        output = ctx.run_state.bb.put(path=f'/2.0/repositories/{workspace}/{_repo}', data=repo_data)
         # ctx.config.main.bitbucket.client.create_repo(project, repository, forkable=False, is_private=True)
     except requests.exceptions.HTTPError as e:
         logging.error(e)
@@ -167,41 +232,9 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
 
     if init:
         add_branches(ctx, output)
+        # ctx.run_state.bb.create_branch(output['workspace']['slug'], output['slug'], output['slug'], '', "Init branch")
 
     add_branch_checks(ctx, repo)
-
-
-# @task(pre=[init])
-def add_branches(ctx, repo):
-    clone_url = [item for item in repo['links']['clone'] if item['name'] == 'ssh'][0].get('href')
-    lang_code = language_code(repo['language'])
-
-    console.print(clone_url)
-
-    import tempfile
-    import os
-
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        console.print('Created temporary directory', tmpdirname)
-        os.chdir(tmpdirname)
-        console.print(os.path.abspath(os.curdir))
-
-        try:
-            ctx.run(f"git clone {clone_url} .")
-            ctx.run("git checkout -b master")
-            url = f"https://gitignore.io/api/{lang_code}"
-            r = requests.get(url)
-
-            with open('.gitignore', 'wb') as fh:
-                fh.write(r.content)
-
-            ctx.run(f"git add .gitignore")
-            ctx.run('git commit -m "Initial commit"')
-            ctx.run('git checkout -b develop')
-            ctx.run('git push --all origin')
-
-        except Exception as e:
-            console.print(e)
 
 
 @task(pre=[init])
@@ -216,7 +249,7 @@ def fork_repo(ctx, repo, target):
     }
 
     try:
-        output = ctx.config.main.bitbucket.client.post(path=f'/repositories/{workspace}/{_repo}/forks', data=fork_data)
+        output = ctx.run_state.bb.post(path=f'/repositories/{workspace}/{_repo}/forks', data=fork_data)
     except requests.exceptions.HTTPError as e:
         logging.error(e)
         exit(1)
@@ -229,45 +262,15 @@ def delete_repo(ctx, repo):
     workspace, _repo = repo_check(repo)
 
     try:
-        ctx.config.main.bitbucket.client.delete(path=f'/2.0/repositories/{workspace}/{_repo}')
+        ctx.run_state.bb.delete(path=f'/2.0/repositories/{workspace}/{_repo}')
         console.print(f"Deleted repo: {repo}", style="green")
     except requests.exceptions.HTTPError as e:
         console.print(e, style="red")
 
 
 @task(pre=[init])
-def add_branch_checks(ctx, repo):
-    workspace, _repo = repo_check(repo)
-
-    checks = [
-        {'kind': 'require_approvals_to_merge', 'value': 1},
-        {'kind': 'require_passing_builds_to_merge', 'value': 1},
-        {'kind': 'require_tasks_to_be_completed'},
-        {'kind': 'push'},
-        {'kind': 'force'},
-        {'kind': 'delete'}
-    ]
-
-    branches = ['master', 'develop']
-
-    for branch in branches:
-        for check in checks:
-            try:
-                data = ctx.config.main.bitbucket.client.add_branch_restriction(
-                    workspace, _repo, check['kind'],
-                    branch_match_kind='glob',
-                    branch_pattern=branch,
-                    value=check.get('value')
-                )
-                logging.debug(data)
-                logging.info(f"Successfully applied check of kind: {check.get('kind')}")
-            except requests.exceptions.HTTPError as e:
-                logging.error(e)
-
-
-@task(pre=[init])
 def get_pull_requests(ctx, workspace, repo):
-    data = ctx.config.main.bitbucket.client.get(path=f"/repositories/{workspace}/{repo}/pullrequests")
+    data = ctx.run_state.bb.get(path=f"/repositories/{workspace}/{repo}/pullrequests")
     console.print(data)
 
     table = Table(title="Pull Requests")
@@ -282,7 +285,7 @@ def get_pull_requests(ctx, workspace, repo):
 
 @task(pre=[init])
 def get_members(ctx, workspace):
-    data = ctx.config.main.bitbucket.client.get(path=f"/workspaces/{workspace}/members")
+    data = ctx.run_state.bb.get(path=f"/workspaces/{workspace}/members")
     console.print(data)
 
     table = Table(
@@ -303,8 +306,8 @@ def get_members(ctx, workspace):
 @task(pre=[init])
 def get_branches(ctx, repo):
     workspace, _repo = repo_check(repo)
-    # data = ctx.config.main.bitbucket.client.get_branches(workspace, _repo, filter='', limit=99999, details=True)
-    data = ctx.config.main.bitbucket.client.get(path=f"/2.0/repositories/{workspace}/{_repo}/refs/branches")
+    # data = ctx.run_state.bb.get_branches(workspace, _repo, filter='', limit=99999, details=True)
+    data = ctx.run_state.bb.get(path=f"/2.0/repositories/{workspace}/{_repo}/refs/branches")
 
     table = Table(
         "Branch",
@@ -333,9 +336,9 @@ def get_branches(ctx, repo):
 
 
 @task(pre=[init])
-def get_projects(ctx, workspace):
-    # projects = ctx.config.main.bitbucket.client.put(f"/2.0/workspaces")
-    projects = ctx.config.main.bitbucket.client.repo_list('capcosaas', limit=1000)
+def list_projects(ctx, workspace):
+    # projects = ctx.run_state.bb.put(f"/2.0/workspaces")
+    projects = ctx.run_state.bb.repo_list('capcosaas', limit=1000)
 
     console.print(projects)
     console.print(dir(projects))
@@ -349,7 +352,7 @@ def get_projects(ctx, workspace):
 @task(pre=[init])
 def get_users(ctx, workspace):
 
-    data = ctx.config.main.bitbucket.client.get(f"/2.0/workspaces/{workspace}/permissions")
+    data = ctx.run_state.bb.get(f"/2.0/workspaces/{workspace}/permissions")
     console.print(data['values'][0])
 
     try:
@@ -363,7 +366,7 @@ def get_users(ctx, workspace):
             logging.info(f"Fetching results page: {data['page']}")
 
             url_path = f"{u.path}?{u.query}"
-            data = ctx.config.main.bitbucket.client.get(path=url_path)
+            data = ctx.run_state.bb.get(path=url_path)
             results.extend(data['values'])
 
             has_next = data.get('next')
@@ -442,7 +445,7 @@ def init_db(ctx, db="bitbucket.db"):
 
 @task(pre=[init])
 def get_permissions(ctx, workspace, table=False):
-    data = ctx.config.main.bitbucket.client.get(f"/2.0/workspaces/{workspace}/permissions/repositories?sort=user.nickname")
+    data = ctx.run_state.bb.get(f"/2.0/workspaces/{workspace}/permissions/repositories?sort=user.nickname")
     console.print(data['values'][0])
 
     try:
@@ -456,7 +459,7 @@ def get_permissions(ctx, workspace, table=False):
             logging.info(f"Fetching results page: {data['page']}")
 
             url_path = f"{u.path}?{u.query}"
-            data = ctx.config.main.bitbucket.client.get(path=url_path)
+            data = ctx.run_state.bb.get(path=url_path)
             results.extend(data['values'])
 
             has_next = data.get('next')
