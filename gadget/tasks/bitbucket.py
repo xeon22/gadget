@@ -113,14 +113,17 @@ def get_repo(ctx, repo):
 
 
 @task(pre=[init])
-def list_repos(ctx, workspace, project=None, output=True):
+def list_repos(ctx, workspace, project=None, repos=None, output=True):
     # workspace, _repo = repo_check(repo)
     url_path = f"/2.0/repositories/{workspace}"
     results = list()
+    has_next = False
     query = {'role': 'member', 'sort': 'name', 'limit': 1000}
 
     if project:
         query.update({'q': f'project.key="{project}"'})
+    if repos:
+        query.update({'q': f'name~"{repos}"'})
 
     try:
         data = ctx.run_state.bb.get(path=url_path, params=query)
@@ -560,10 +563,12 @@ def get_repo_groups(ctx, repo, table=False):
 
 
 @task(pre=[init])
-def set_repo_groups(ctx, repo, profile, project=None):
+def set_repo_groups(ctx, repo, profile, project=None, repos=None):
     workspace, _repo = repo_check(repo)
 
-    repo_list = list_repos(ctx, workspace, project=project, output=False)
+    if _repo == '*':
+        repo_list = list_repos(ctx, workspace, project=project, repos=repos, output=False)
+        logging.info(f"Processing {len(repo_list)} repositories")
 
     try:
         group_profile = profiles(profile)
@@ -578,15 +583,15 @@ def set_repo_groups(ctx, repo, profile, project=None):
             'Content-Type': "text/plain",
         }
 
-        if project:
+        if project or repos:
             for repo in repo_list:
                 url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{workspace}/{repo['name']}/{workspace}/{group}"
 
                 try:
                     response = requests.put(url, data=permission, headers=headers, auth=(ctx.run_state.bb.username, ctx.run_state.bb.password))
-                    logging.info(f"Repo: {repo['name']} Status: {response.reason}")
+                    logging.info(f"Repo: {repo['name']}\tGroup: {group}:{permission} -> {response.reason}")
                 except Exception:
-                    logging.error(f"Repo: {repo['name']} Status: {response.reason} -> {response.text}")
+                    logging.error(f"Repo: {repo['name']}\tGroup: {group}:{permission} -> {response.reason} :: {response.text}")
                     sys.exit(1)
         else:
             url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{workspace}/{_repo}/{workspace}/{group}"
@@ -594,9 +599,9 @@ def set_repo_groups(ctx, repo, profile, project=None):
             try:
                 response = requests.put(url, data=permission, headers=headers,
                                         auth=(ctx.run_state.bb.username, ctx.run_state.bb.password))
-                logging.info(f"Repo: {_repo} Status: {response.reason}")
+                logging.info(f"Repo: {_repo}\tGroup: {group}:{permission} -> {response.reason}")
             except Exception:
-                logging.error(f"Repo: {_repo} Status: {response.reason} -> {response.text}")
+                logging.error(f"Repo: {_repo}\tGroup: {group}:{permission} -> {response.reason} :: {response.text}")
                 sys.exit(1)
 
 
