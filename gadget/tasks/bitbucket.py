@@ -14,8 +14,10 @@ import sqlite3
 import tempfile
 import os
 import re
+import sys
 
 console = Console()
+
 
 def language_code(lang):
     languages = {
@@ -24,6 +26,7 @@ def language_code(lang):
     }
 
     return languages.get(lang)
+
 
 def repo_check(repo):
     try:
@@ -48,6 +51,38 @@ def branch_permission(**overrides):
 
     defaults.update(**overrides)
     return defaults
+
+
+def profiles(profile):
+    profiles = {
+        'cloud': {
+            'pz-cloud-eng': 'write',
+            'pz-cloud-sre': 'read'
+        },
+
+        'sre': {
+            'pz-cloud-sre': 'write'
+        },
+
+        'coredev': {
+            'pz-coredev-rw': 'write',
+            'pz-coredev-ro': 'read',
+        },
+
+        'coop': {
+            'pz-coredev-rw': 'write',
+            'cl-coop-rw': 'write',
+            'cl-coop-ro': 'read',
+        },
+
+        'igm': {
+            'pz-coredev-rw': 'write',
+            'cl-igm-rw': 'write',
+            'cl-igm-ro': 'read',
+        }
+    }
+
+    return profiles[profile]
 
 
 @task(pre=[init.load_conf])
@@ -78,13 +113,17 @@ def get_repo(ctx, repo):
 
 
 @task(pre=[init])
-def list_repos(ctx, workspace):
+def list_repos(ctx, workspace, project=None, output=True):
     # workspace, _repo = repo_check(repo)
-    url_path = f"/repositories/{workspace}?sort=name"
+    url_path = f"/2.0/repositories/{workspace}"
     results = list()
+    query = {'role': 'member', 'sort': 'name', 'limit': 1000}
+
+    if project:
+        query.update({'q': f'project.key="{project}"'})
 
     try:
-        data = ctx.config.main.bitbucket.client.get(path=url_path)
+        data = ctx.run_state.bb.get(path=url_path, params=query)
         results.extend(data['values'])
 
         if 'next' in data.keys():
@@ -104,26 +143,29 @@ def list_repos(ctx, workspace):
     except requests.exceptions.HTTPError as e:
         logging.error(e)
 
-    table = Table(
-        "Name",
-        "Project",
-        "Language",
-        "Created",
-        title=f"Repositories({data['size']})"
-    )
-
-    for item in results:
-        create_time = datetime.fromisoformat(item['created_on'])
-        from datetime import timezone
-
-        table.add_row(
-            item['name'],
-            item['project']['key'],
-            item['language'],
-            datetime.strftime(create_time, '%b %m %Y'),
+    if output:
+        table = Table(
+            "Name",
+            "Project",
+            "Language",
+            "Created",
+            title=f"Repositories({len(results)})"
         )
 
-    console.print(table)
+        for item in results:
+            create_time = datetime.fromisoformat(item['created_on'])
+            from datetime import timezone
+
+            table.add_row(
+                item['name'],
+                item['project']['key'],
+                item['language'],
+                datetime.strftime(create_time, '%b %m %Y'),
+            )
+
+        console.print(table)
+    else:
+        return results
 
 
 @task(pre=[init])
@@ -337,16 +379,13 @@ def get_branches(ctx, repo):
 
 @task(pre=[init])
 def list_projects(ctx, workspace):
-    # projects = ctx.run_state.bb.put(f"/2.0/workspaces")
-    projects = ctx.run_state.bb.repo_list('capcosaas', limit=1000)
+    projects = ctx.run_state.bb.put(f"/2.0/workspaces")
+    # projects = ctx.run_state.bb.repo_list('capcosaas', limit=1000)
 
     console.print(projects)
-    console.print(dir(projects))
 
-    breakpoint()
-
-    # for project in projects:
-    #     console.print(project)
+    for project in projects:
+        console.print(project)
 
 
 @task(pre=[init])
@@ -496,6 +535,69 @@ def get_permissions(ctx, workspace, table=False):
                 )
 
     # console.print(table)
+
+
+@task(pre=[init])
+def get_repo_groups(ctx, repo, table=False):
+    workspace, _repo = repo_check(repo)
+    data = ctx.run_state.bb.get(f"/1.0/group-privileges/{workspace}/{_repo}")
+
+    table = Table(
+        "Repo",
+        "Group",
+        "Permission",
+        title=f"Permissions({len(data)})"
+    )
+
+    for item in sorted(data, key=lambda i: i['group']['name']):
+        table.add_row(
+            item['repo'],
+            item['group']['name'],
+            item['privilege'],
+        )
+
+    console.print(table)
+
+
+@task(pre=[init])
+def set_repo_groups(ctx, repo, profile, project=None):
+    workspace, _repo = repo_check(repo)
+
+    repo_list = list_repos(ctx, workspace, project=project, output=False)
+
+    try:
+        group_profile = profiles(profile)
+        logging.info(group_profile)
+    except KeyError:
+        logging.error(f"Invalid profile {profile} supplied")
+        sys.exit(1)
+
+    for group,permission in group_profile.items():
+        headers = {
+            'Accept': 'application/json',
+            'Content-Type': "text/plain",
+        }
+
+        if project:
+            for repo in repo_list:
+                url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{workspace}/{repo['name']}/{workspace}/{group}"
+
+                try:
+                    response = requests.put(url, data=permission, headers=headers, auth=(ctx.run_state.bb.username, ctx.run_state.bb.password))
+                    logging.info(f"Repo: {repo['name']} Status: {response.reason}")
+                except Exception:
+                    logging.error(f"Repo: {repo['name']} Status: {response.reason} -> {response.text}")
+                    sys.exit(1)
+        else:
+            url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{workspace}/{_repo}/{workspace}/{group}"
+
+            try:
+                response = requests.put(url, data=permission, headers=headers,
+                                        auth=(ctx.run_state.bb.username, ctx.run_state.bb.password))
+                logging.info(f"Repo: {_repo} Status: {response.reason}")
+            except Exception:
+                logging.error(f"Repo: {_repo} Status: {response.reason} -> {response.text}")
+                sys.exit(1)
 
 
 @task()
