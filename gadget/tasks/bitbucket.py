@@ -31,12 +31,11 @@ def language_code(lang):
 def repo_check(repo):
     try:
         _workspace, _repo = repo.split('/')
+        return _workspace, _repo
     except ValueError:
         console.print(f"Invalid repo value: {repo}", style="red")
         console.print("Repo is not a path-like value (eg: workspace/repoName)", style="red")
         exit(1)
-    else:
-        return _workspace, _repo
 
 
 def branch_permission(**overrides):
@@ -69,6 +68,11 @@ def profiles(profile):
             'pz-coredev-ro': 'read',
         },
 
+        'pzs': {
+            'pz-coredev-rw': 'write',
+            'pz-coredev-ro': 'read',
+        },
+
         'coop': {
             'pz-coredev-rw': 'write',
             'cl-coop-rw': 'write',
@@ -82,7 +86,7 @@ def profiles(profile):
         }
     }
 
-    return profiles[profile]
+    return profiles[profile.lower()]
 
 
 @task(pre=[init.load_conf])
@@ -242,7 +246,7 @@ def add_branch_checks(ctx, repo, init=False):
 
 
 @task(pre=[init])
-def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, branch='develop', language=None, init=False):
+def add_repo(ctx, repo, project, profile, description=None, wiki=False, issues=False, branch='develop', language=None, init=False):
     workspace, _repo = repo_check(repo)
 
     repo_data = {
@@ -279,6 +283,7 @@ def add_repo(ctx, repo, project, description=None, wiki=False, issues=False, bra
         add_branches(ctx, output)
         # ctx.run_state.bb.create_branch(output['workspace']['slug'], output['slug'], output['slug'], '', "Init branch")
 
+    set_repo_groups(ctx, repo, profile, project=project, repos=_repo)
     add_branch_checks(ctx, repo)
 
 
@@ -563,12 +568,14 @@ def get_repo_groups(ctx, repo, table=False):
 
 
 @task(pre=[init])
-def set_repo_groups(ctx, repo, profile, project=None, repos=None):
-    workspace, _repo = repo_check(repo)
+def set_repo_groups(ctx, workspace, profile, project=None, repos=None):
+    _workspace, _repo = repo_check(workspace)
 
     if _repo == '*':
-        repo_list = list_repos(ctx, workspace, project=project, repos=repos, output=False)
+        repo_list = list_repos(ctx, _workspace, project=project, repos=repos, output=False)
         logging.info(f"Processing {len(repo_list)} repositories")
+    else:
+        repo_list = [dict(name=_repo)]
 
     try:
         group_profile = profiles(profile)
@@ -585,7 +592,7 @@ def set_repo_groups(ctx, repo, profile, project=None, repos=None):
 
         if project or repos:
             for repo in repo_list:
-                url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{workspace}/{repo['name']}/{workspace}/{group}"
+                url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{_workspace}/{repo['name']}/{_workspace}/{group}"
 
                 try:
                     response = requests.put(url, data=permission, headers=headers, auth=(ctx.run_state.bb.username, ctx.run_state.bb.password))
@@ -594,7 +601,7 @@ def set_repo_groups(ctx, repo, profile, project=None, repos=None):
                     logging.error(f"Repo: {repo['name']}\tGroup: {group}:{permission} -> {response.reason} :: {response.text}")
                     sys.exit(1)
         else:
-            url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{workspace}/{_repo}/{workspace}/{group}"
+            url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{_workspace}/{_repo}/{_workspace}/{group}"
 
             try:
                 response = requests.put(url, data=permission, headers=headers,
@@ -603,6 +610,32 @@ def set_repo_groups(ctx, repo, profile, project=None, repos=None):
             except Exception:
                 logging.error(f"Repo: {_repo}\tGroup: {group}:{permission} -> {response.reason} :: {response.text}")
                 sys.exit(1)
+
+
+@task(pre=[init])
+def set_repo_project(ctx, workspace, project, repos=None):
+    repo_list = list_repos(ctx, workspace, project=None, repos=repos, output=False)
+    logging.info(f"Processing {len(repo_list)} repositories")
+
+    for repo in repo_list:
+        repo['project']['key'] = project
+
+        try:
+            response = ctx.run_state.bb.put(f"/2.0/repositories/{workspace}/{repo['slug']}", data=repo)
+            logging.info(f"Repo: {repo['name']}\tGroup: {group}:{permission} -> {response.reason}")
+        except Exception:
+            logging.error(f"Repo: {repo['name']}\tGroup: {group}:{permission} -> {response.reason} :: {response.text}")
+            sys.exit(1)
+    else:
+        url = f"{ctx.run_state.bb.url}/1.0/group-privileges/{workspace}/{_repo}/{workspace}/{group}"
+
+        try:
+            response = requests.put(url, data=permission, headers=headers,
+                                    auth=(ctx.run_state.bb.username, ctx.run_state.bb.password))
+            logging.info(f"Repo: {_repo}\tGroup: {group}:{permission} -> {response.reason}")
+        except Exception:
+            logging.error(f"Repo: {_repo}\tGroup: {group}:{permission} -> {response.reason} :: {response.text}")
+            sys.exit(1)
 
 
 @task()
