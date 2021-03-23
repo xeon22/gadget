@@ -86,7 +86,12 @@ def profiles(profile):
         }
     }
 
-    return profiles[profile.lower()]
+    try:
+        return profiles[profile.lower()]
+    except KeyError:
+        logging.error(f"Invalid profile {profile} specified")
+        logging.error(f"Valid profiles are {profiles.keys()}")
+        sys.exit(1)
 
 
 @task(pre=[init.load_conf])
@@ -289,17 +294,18 @@ def add_repo(ctx, repo, project, profile, description=None, wiki=False, issues=F
 
 @task(pre=[init])
 def fork_repo(ctx, repo, target):
-    workspace, _repo = repo_check(repo)
+    src_workspace, src_repo = repo_check(repo)
+    target_workspace, target_repo = repo_check(repo)
 
     fork_data = {
-        "name": target,
+        "name": target_repo,
         "workspace": {
-            "slug": workspace
+            "slug": target_workspace
         }
     }
 
     try:
-        output = ctx.run_state.bb.post(path=f'/repositories/{workspace}/{_repo}/forks', data=fork_data)
+        output = ctx.run_state.bb.post(path=f'/2.0/repositories/{src_workspace}/{src_repo}/forks', data=fork_data)
     except requests.exceptions.HTTPError as e:
         logging.error(e)
         exit(1)
