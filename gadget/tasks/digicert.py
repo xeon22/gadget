@@ -62,9 +62,10 @@ def init_vault(ctx, vault=None):
 
     try:
         credential = AzureCliCredential()
+        # logging.info(credential)
     except Exception as e:
         credential = DefaultAzureCredential()
-
+    
     client = SecretClient(vault_url=f"https://{vault}.vault.azure.net/", credential=credential)
 
     ctx.run_state.vault_client = client
@@ -193,18 +194,18 @@ def download(ctx, id, format="pem_nointermediate", output=False):
     return cert
 
 
-@task(pre=[init])
+@task(pre=[init_vault])
 def renew(ctx, order, vault, csrName, certName=None):
     api = ctx.config.main.digicert.api
     order_data = api.orders.info(order).body
-    vault_client = ctx.config.azure.vault_client
+    vault_client = ctx.run_state.vault_client
 
     console.log(order_data)
 
     if certName is None:
         certName = csrName.replace('-key', '-crt')
 
-    vault_client = SecretClient(vault_url=f"https://{vault}.vault.azure.net/", credential=credential)
+    # vault_client = SecretClient(vault_url=f"https://{vault}.vault.azure.net/", credential=credential)
     csr_key_name = vault_client.get_secret(csrName)
     tls_order_csr = base64.b64decode(csr_key_name.value).decode('utf-8')
 
@@ -227,12 +228,17 @@ def renew(ctx, order, vault, csrName, certName=None):
     }
 
     order = api.orders.renew(body=payload).body
+
+    sleep(10)
     email_cert(ctx, order['cerificate_id'])
 
 
-@task(pre=[init, init_vault])
-def upload_cert(ctx, order):
-    vault = init_vault(ctx, vault=ctx.config.main.digicert.keyvault)
+@task(pre=[init])
+def upload_cert(ctx, order, vault=None):
+    if vault is None:
+        vault = init_vault(ctx, vault=ctx.config.main.digicert.keyvault)
+    else:
+        vault = init_vault(ctx, vault=vault)
 
     cert_data = download(ctx, order, output=False)
     cert_name = get_cert_data(cert_data)
@@ -277,6 +283,7 @@ def upload_keystore(ctx, basename):
     p12data = p12.export(state['passphrase'])
 
     vault.set_secret(keystore_name, base64.b64encode(p12data).decode('utf-8'))
+    logging.info(f"Uploaded keystore {keystore_name} to {vault}")
 
 
 @task(pre=[init])
