@@ -1,7 +1,7 @@
 
 from gadget.tasks import init, utils
 from datetime import datetime
-from invoke import task
+from invoke import task, call
 from atlassian import Bitbucket
 from rich.console import Console
 from rich.table import Table
@@ -654,8 +654,6 @@ def load_permissions(ctx, input="results.json", db="bitbucket.db"):
 
     :return:
     """
-
-    init_db(ctx)
 
     raw = json.load(open(input, 'r'))
     logging.info(f"Loaded input file {input} with {len(raw)} records")
