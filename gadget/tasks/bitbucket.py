@@ -7,6 +7,8 @@ from rich.console import Console
 from rich.table import Table
 from urllib.parse import urlparse
 from contextlib import closing
+from datetime import timezone
+
 import requests
 import logging
 import json
@@ -117,6 +119,8 @@ def get_repo(ctx, repo):
     try:
         data = ctx.run_state.bb.get(path=url_path)
         console.print(data)
+
+        return data
     except requests.exceptions.HTTPError as e:
         logging.error(e)
 
@@ -225,7 +229,7 @@ def add_branch_checks(ctx, repo, init=False):
         {'kind': 'require_approvals_to_merge', 'value': 1},
         {'kind': 'require_passing_builds_to_merge', 'value': 1},
         {'kind': 'require_tasks_to_be_completed'},
-        {'kind': 'push'},
+        {'kind': 'push', 'groups': [{'name': 'Administrators', 'slug': 'Adminstrators'}]},
         {'kind': 'force'},
         {'kind': 'delete'}
     ]
@@ -240,9 +244,7 @@ def add_branch_checks(ctx, repo, init=False):
                     branch_match_kind='glob',
                     branch_pattern=branch,
                     value=check.get('value'),
-                    groups=[
-                        # {"owner": {"username": None}, "slug": None}
-                    ]
+                    groups=check.get('groups'),
                 )
                 logging.debug(data)
                 logging.info(f"Successfully applied check of kind: {check.get('kind')}")
@@ -314,6 +316,30 @@ def fork_repo(ctx, repo, target):
 
 
 @task(pre=[init])
+def invite_user(ctx, workspace, email, group):
+    url = f"/1.0/users/{workspace}/invitations"
+
+    payload = {
+        "email": email,
+        "group_slug": group
+    }
+
+    try:
+        response = ctx.run_state.bb.put(
+            url, data=payload,
+            headers={'Content-Type': 'application/json'},
+            # auth=(ctx.run_state.bb.username, ctx.run_state.bb.password)
+        )
+
+        console.print(response)
+        logging.info(f"Invited user: {email} as memberOf {group} -> {response.reason}")
+
+    except Exception as e:
+        logging.error(e)
+        sys.exit(1)
+
+
+@task(pre=[init])
 def delete_repo(ctx, repo):
     workspace, _repo = repo_check(repo)
 
@@ -360,7 +386,7 @@ def get_members(ctx, workspace):
 
 
 @task(pre=[init])
-def get_branches(ctx, repo):
+def get_branches(ctx, repo, output=True):
     workspace, _repo = repo_check(repo)
     # data = ctx.run_state.bb.get_branches(workspace, _repo, filter='', limit=99999, details=True)
     data = ctx.run_state.bb.get(path=f"/2.0/repositories/{workspace}/{_repo}/refs/branches")
@@ -374,21 +400,75 @@ def get_branches(ctx, repo):
 
     table.add_column("Age(Days)", justify="right")
 
-    for item in sorted(data['values'], key=lambda i: i['target']['date']):
-        create_time = datetime.fromisoformat(item['target']['date'])
-        from datetime import timezone
-        now = datetime.now(timezone.utc)
-        time_difference = create_time - now
+    try:
+        results = data['values']
 
-        table.add_row(
-            item['name'],
-            item['target']['author']['raw'],
-            datetime.strftime(create_time, '%b %m %Y'),
-            str(time_difference.days)
+        if 'next' in data.keys():
+            has_next = True
 
-        )
+        while has_next:
+            u = urlparse(data['next'])
+            logging.info(f"Fetching results page: {data['page']}")
 
-    console.print(table)
+            url_path = f"{u.path}?{u.query}"
+            data = ctx.run_state.bb.get(path=url_path)
+            results.extend(data['values'])
+
+            has_next = data.get('next')
+
+        # console.print(data)
+    except requests.exceptions.HTTPError as e:
+        logging.error(e)
+
+    if output:
+        for item in sorted(results, key=lambda i: i['target']['date']):
+            create_time = datetime.fromisoformat(item['target']['date'])
+            now = datetime.now(timezone.utc)
+            time_difference = create_time - now
+
+            table.add_row(
+                item['name'],
+                item['target']['author']['raw'],
+                datetime.strftime(create_time, '%b %m %Y'),
+                str(time_difference.days)
+
+            )
+
+        console.print(table)
+
+    return results
+
+
+@task(pre=[init])
+def delete_branches(ctx, repo, age):
+    workspace, _repo = repo_check(repo)
+
+    repo_data = get_repo(ctx, repo)
+    clone_url = [item for item in repo_data['links']['clone'] if item['name'] == 'ssh'][0].get('href')
+    console.print(clone_url)
+
+    branches = get_branches(ctx, repo, output=False)
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        console.print('Created temporary directory', tmpdirname)
+        os.chdir(tmpdirname)
+        console.print(os.path.abspath(os.curdir))
+
+        try:
+            ctx.run(f"git clone {clone_url} .")
+
+            for branch in sorted(branches, key=lambda i: i['target']['date']):
+                create_time = datetime.fromisoformat(branch['target']['date'])
+
+                now = datetime.now(timezone.utc)
+                time_difference = create_time - now
+
+                if -(int(time_difference.days)) > int(age):
+                    logging.info(f"Deleting branch: {branch['name']} of age: {-(time_difference.days)}")
+                    ctx.run(f"git push origin --delete {branch['name']}")
+
+        except Exception as e:
+            console.print(e)
 
 
 @task(pre=[init])
