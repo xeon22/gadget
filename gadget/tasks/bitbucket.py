@@ -229,7 +229,7 @@ def add_branch_checks(ctx, repo, init=False):
         {'kind': 'require_approvals_to_merge', 'value': 1},
         {'kind': 'require_passing_builds_to_merge', 'value': 1},
         {'kind': 'require_tasks_to_be_completed'},
-        {'kind': 'push', 'groups': [{'name': 'Administrators', 'slug': 'Adminstrators'}]},
+        {'kind': 'push', 'groups': [{'name': 'Administrators', 'slug': 'Administrators'}]},
         {'kind': 'force'},
         {'kind': 'delete'}
     ]
