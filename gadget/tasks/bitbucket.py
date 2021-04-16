@@ -205,7 +205,10 @@ def add_branches(ctx, repo, init=False):
             with open('.gitignore', 'wb') as fh:
                 fh.write(r.content)
 
-            ctx.run(f"git add .gitignore")
+            with open('Jenkinsfile', 'w') as fh:
+                fh.write("PLZPipeline {}\n")
+
+            ctx.run(f"git add .")
             ctx.run('git commit -m "Initial commit"')
             ctx.run('git checkout -b develop')
             ctx.run('git push --all origin')
@@ -798,8 +801,6 @@ def load_permissions(ctx, input="results.json", db="bitbucket.db"):
                     )
                 """
                 cursor.execute(perm)
-
-
 
         connection.commit()
 
