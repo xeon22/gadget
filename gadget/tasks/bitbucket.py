@@ -62,6 +62,7 @@ def profiles(profile):
         },
 
         'sre': {
+            'pz-cloud-eng': 'write',
             'pz-cloud-sre': 'write'
         },
 
