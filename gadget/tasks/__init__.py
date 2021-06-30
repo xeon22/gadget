@@ -14,7 +14,8 @@ from gadget.tasks import (
     utils,
     bitbucket,
     hvault,
-    digicert
+    digicert,
+    logdna
 )
 
 ns = Collection()
@@ -29,6 +30,7 @@ ns.add_collection(kubernetes)
 ns.add_collection(azure)
 ns.add_collection(hvault)
 ns.add_collection(digicert)
+ns.add_collection(logdna)
 
 LOGGING_FORMAT = '[%(module)s:%(funcName)s:%(lineno)d] %(levelname)s: %(message)s'
 
