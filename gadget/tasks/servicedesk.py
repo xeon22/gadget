@@ -7,6 +7,7 @@ from rich import print
 from rich.logging import RichHandler
 from rich.console import Console
 from rich.table import Table
+from gadget.tasks import init, utils
 
 # table = Table(title="Star Wars Movies")
 # table.add_column("Released", justify="right", style="cyan", no_wrap=True)
@@ -20,16 +21,21 @@ from rich.table import Table
 console = Console()
 logger = logging.getLogger("rich")
 
-@task()
+
+@task(pre=[init.load_conf])
 def init(ctx):
-    ctx.config.main.servicedesk.client = ServiceDesk(
+    client = ServiceDesk(
         url='https://platformzero.atlassian.net',
         username=ctx.config.main.servicedesk.username,
         password=ctx.config.main.servicedesk.password,
         cloud=True
     )
 
-@task
+    ctx.run_state.servicedesk = client
+    return client
+
+
+@task(pre=[init])
 def list_queue(ctx, project):
     table = Table(
         "Id",
@@ -40,7 +46,7 @@ def list_queue(ctx, project):
     )
 
     logger.info("Getting issues for project %s", project)
-    data = ctx.config.main.servicedesk.client.get_issues_in_queue(service_desk_id='CLOUD', queue_id=65)
+    data = ctx.run_state.servicedesk.get_issues_in_queue(service_desk_id='CLOUD', queue_id=65)
 
     for request in data['values']:
         table.add_row(
@@ -52,9 +58,10 @@ def list_queue(ctx, project):
 
     console.print(table)
 
-@task()
-def get_request(ctx, id):
-    request = ctx.config.main.servicedesk.client.get_customer_request(issue_id_or_key=id)
+
+@task(pre=[init])
+def get_request(ctx, issue):
+    request = ctx.run_state.servicedesk.get_customer_request(issue_id_or_key=issue)
 
     table = Table(
         "Id",
@@ -83,3 +90,11 @@ def get_request(ctx, id):
     console.print("Reporter Email:", request['reporter']['emailAddress'])
     console.print("Summary:", request['requestFieldValues'][0]['value'])
     console.print("Status:", request['currentStatus']['status'])
+
+    console.print(request)
+
+
+@task(pre=[init])
+def get_states(ctx, issue):
+    request = ctx.run_state.servicedesk.get_customer_transitions(issue)
+    console.print(request)

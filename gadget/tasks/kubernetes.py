@@ -15,7 +15,7 @@ zones = {
     "1": {
         "pageid": "624001182",
         "name": "Zone1 [Development]",
-        "cluster": "saas-dev-product-aks-admin"
+        "cluster": "saas-dev-product-aks-green-admin"
     },
     "2": {
         "pageid": "624001191",
