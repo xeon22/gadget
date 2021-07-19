@@ -1,5 +1,5 @@
 ARG DOCKER_REPO_BASE=docker.io
-FROM ${DOCKER_REPO_BASE}/python:3.9-slim AS builder
+FROM ${DOCKER_REPO_BASE}/python:3.9-buster AS builder
 ENV PYTHONPATH=$PYTHONPATH:/app/vendor
 
 WORKDIR /usr/src/app
