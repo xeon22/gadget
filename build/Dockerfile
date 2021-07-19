@@ -9,7 +9,7 @@ RUN pip install setuptools_scm
 RUN pip install -r requirements.txt --target=vendor
 RUN pip install $(pwd) --upgrade --target=vendor
 
-FROM ${DOCKER_REPO_BASE}/python:3.7-slim
+FROM ${DOCKER_REPO_BASE}/python:3.9-slim
 ENV PYTHONPATH=$PYTHONPATH:/app/vendor
 
 # RUN groupadd -g 1001 appuser; useradd -u 1001 -m -g 1001 -s /usr/sbin/nologin appuser; chown -R 1001:1001 /app
