@@ -1,9 +1,10 @@
 import base64
 import logging
+import time
 
 from gadget.tasks import init, utils, confluence
 from invoke import task, Collection, Executor
-from azure.identity import AzureCliCredential, DefaultAzureCredential
+from azure.identity import AzureCliCredential, ChainedTokenCredential, ManagedIdentityCredential
 from azure.keyvault.secrets import SecretClient
 from rich.console import Console
 from jinja2 import Template
@@ -60,13 +61,12 @@ def init_vault(ctx, vault=None):
     if vault is None:
         vault = ctx.config.main.digicert.keyvault
 
-    try:
-        credential = AzureCliCredential()
-        # logging.info(credential)
-    except Exception as e:
-        credential = DefaultAzureCredential()
-    
-    client = SecretClient(vault_url=f"https://{vault}.vault.azure.net/", credential=credential)
+    credential = ChainedTokenCredential(
+        ManagedIdentityCredential(), AzureCliCredential()
+    )
+
+    client = SecretClient(
+        vault_url=f"https://{vault}.vault.azure.net/", credential=credential)
 
     ctx.run_state.vault_client = client
 
@@ -135,7 +135,8 @@ def list_orders(ctx):
         """
     )
 
-    output = template.render(fields=len(columns), columns=columns, data=sorted(rows, key=lambda k: k[3]))
+    output = template.render(fields=len(
+        columns), columns=columns, data=sorted(rows, key=lambda k: k[3]))
     confluence.publish_page(
         ctx,
         page_id=ctx.config.main.digicert.confluence_page,
@@ -229,7 +230,7 @@ def renew(ctx, order, vault, csrName, certName=None):
 
     order = api.orders.renew(body=payload).body
 
-    sleep(10)
+    time.sleep(10)
     email_cert(ctx, order['cerificate_id'])
 
 
@@ -246,7 +247,8 @@ def upload_cert(ctx, order, vault=None):
     secret_value = base64.b64encode(cert_data).decode('utf-8')
 
     vault_secret_name = f"{cert_name}-crt"
-    secret = vault.set_secret(vault_secret_name, secret_value, content_type='certificate')
+    secret = vault.set_secret(
+        vault_secret_name, secret_value, content_type='certificate')
 
     logging.info(f"Successfully updated cert: f{secret.id}")
 
@@ -274,7 +276,8 @@ def upload_keystore(ctx, basename):
 
         state.update({item: data})
 
-    certificate = crypto.load_certificate(crypto.FILETYPE_PEM, state.get('crt'))
+    certificate = crypto.load_certificate(
+        crypto.FILETYPE_PEM, state.get('crt'))
     private_key = crypto.load_privatekey(crypto.FILETYPE_PEM, state.get('key'))
 
     p12 = crypto.PKCS12()
