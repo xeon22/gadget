@@ -13,7 +13,8 @@ from gadget.tasks import (
     bitbucket,
     hvault,
     digicert,
-    helm
+    helm,
+    terraform
 )
 
 
@@ -32,3 +33,4 @@ ns.add_collection(azure)
 ns.add_collection(hvault)
 ns.add_collection(digicert)
 ns.add_collection(helm)
+ns.add_collection(terraform)
