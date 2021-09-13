@@ -1,4 +1,5 @@
 import base64
+from io import BufferedIOBase
 import logging
 import time
 
@@ -261,6 +262,50 @@ def upload_keystore(ctx, basename):
     state = {
         'passphrase': vault.get_secret(f"{basename}-passphrase").value
     }
+
+    for item in ["key", "crt"]:
+        object_name = f"{basename}-{item}"
+
+        try:
+            raw_data = vault.get_secret(object_name)
+
+            data = base64.b64decode(raw_data.value).decode('utf-8')
+
+            logging.info(f"Fetched {object_name} from keyvault")
+        except Exception as e:
+            logging.error(e)
+
+        state.update({item: data})
+
+    certificate = crypto.load_certificate(
+        crypto.FILETYPE_PEM, state.get('crt'))
+    private_key = crypto.load_privatekey(crypto.FILETYPE_PEM, state.get('key'))
+
+    p12 = crypto.PKCS12()
+    p12.set_privatekey(private_key)
+    p12.set_certificate(certificate)
+    p12data = p12.export(state['passphrase'])
+
+    vault.set_secret(keystore_name, base64.b64encode(p12data).decode('utf-8'))
+    logging.info(f"Uploaded keystore {keystore_name} to {vault}")
+
+
+@task(pre=[init, init_vault])
+def download_keystore(ctx, basename):
+    vault = init_vault(ctx, vault=ctx.config.main.digicert.keyvault)
+    keystore_name = f"{basename}-pfx"
+    passphrase_name = f"{basename}-passphrase"
+
+    state = {
+        'passphrase': vault.get_secret(f"{basename}-passphrase").value,
+        'keystore': vault.get
+    }
+
+    raw_keystore = vault.get_secret(keystore_name)
+    keystore = base64.b64decode(raw_keystore.value).decode('utf-8')
+
+    raw_passphrase = vault.get_secret(passphrase_name)
+    passphrase = base64.b64decode(raw_passphrase.value).decode('utf-8')
 
     for item in ["key", "crt"]:
         object_name = f"{basename}-{item}"
