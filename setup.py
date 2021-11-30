@@ -17,7 +17,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     author='Capco',
-    author_email='devops@capco.com',
+    author_email='markpimentel22@gmail.com',
     name='gadget',
     version=my_version,
 
